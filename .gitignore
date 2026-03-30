@@ -1,0 +1,24 @@
+# Environments
+.venv/
+venv/
+env/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Models and Weights (Large files)
+*.task
+*.pkl
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Evaluation Reports
+evaluation/*.json

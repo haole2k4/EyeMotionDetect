@@ -1,0 +1,12 @@
+git+https://github.com/Ahmednull/L2CS-Net.git
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+pyautogui>=0.9.54
+pyyaml>=6.0
+joblib>=1.3.0
+tk
+torch
+torchvision
+gdown
