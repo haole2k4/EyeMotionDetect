@@ -89,7 +89,7 @@ Chỉnh tham số trong `config/settings.yaml`:
 | Tham số | Mặc định | Ý nghĩa |
 |---------|----------|---------|
 | `blink_threshold` | 0.21 | EAR dưới mức này = đang nhắm |
-| `short_blink_min_ms` | 120 | Ngưỡng tối thiểu để nhận chớp có chủ ý |
+| `short_blink_min_ms` | 250 | Ngưỡng tối thiểu để nhận chớp có chủ ý |
 | `short_blink_max_ms` | 400 | Giới hạn trên của click trái |
 | `long_blink_min_ms` | 600 | Ngưỡng dưới của click phải |
 | `consecutive_frames` | 3 | Số frame liên tiếp để xác nhận blink |
