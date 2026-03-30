@@ -526,12 +526,12 @@ Chạy test này TRƯỚC và SAU khi calibrate để so sánh
 - [ ] Pass tất cả test cases ở 1.3
 
 ### Phase 2 — Gaze Estimation
-- [ ] L2CS-Net inference < 33ms
-- [ ] VRAM < 2.5GB
-- [ ] Xử lý được trường hợp không detect face
+- [x] L2CS-Net inference < 33ms
+- [x] VRAM < 2.5GB
+- [x] Xử lý được trường hợp không detect face
 
 ### Phase 3–4 — Calibration
-- [ ] Thu đủ data (3 lần × 12 điểm)
+- [x] Thu đủ data (3 lần × 12 điểm)
 - [ ] MAE validation < 80px
 - [ ] R² > 0.92
 - [ ] Lưu/load model hoạt động
@@ -560,8 +560,8 @@ Chạy test này TRƯỚC và SAU khi calibrate để so sánh
 |-------|-------------|---------------|------------|---------|
 | 0 — Môi trường | | | ✅ | Hoàn tất cài requirements và tải l2cs weights |
 | 1 — Blink Detection | | | ✅ | Code ở `src/blink_detector.py` và `facial_video_landmark.py` |
-| 2 — Gaze Estimation | | | ⬜ | |
-| 3 — Thu Calibration Data | | | ⬜ | |
+| 2 — Gaze Estimation | | | ✅ | Code tại `src/gaze_estimator.py` |
+| 3 — Thu Calibration Data | | | ✅ | Code tại `src/calibration.py` và `calibration/DATA_COLLECTION.md` |
 | 4 — Calibration Mapper | | | ⬜ | |
 | 5 — Smoother | | | ⬜ | |
 | 6 — Tích hợp | | | ⬜ | |

@@ -1,6 +1,3 @@
-import os
-os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts"
-
 import cv2 as cv
 import mediapipe as mp
 import time
@@ -105,6 +102,20 @@ display_event     = BlinkType.NONE
 display_hold_frames = 0
 DISPLAY_HOLD = 18
 
+# Create window with proper aspect ratio
+WIN = "Blink Detector - Phase 1.2"
+ret_init, frame_init = cap.read()
+if ret_init:
+    fh, fw = frame_init.shape[:2]
+else:
+    fh, fw = 480, 640
+MAX_W = 640
+scale = MAX_W / fw
+win_w = int(fw * scale)
+win_h = int(fh * scale)
+cv.namedWindow(WIN, cv.WINDOW_NORMAL | cv.WINDOW_KEEPRATIO)
+cv.resizeWindow(WIN, win_w, win_h)
+
 with FaceLandmarker.create_from_options(options) as landmarker:
     while True:
         ret, frame = cap.read()
@@ -161,9 +172,10 @@ with FaceLandmarker.create_from_options(options) as landmarker:
         cv.putText(frame, "Press 'q' to quit", (w - 180, h - 10),
                    cv.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1, cv.LINE_AA)
 
-        cv.imshow("Blink Detector - Phase 1.2", frame)
+        cv.imshow(WIN, frame)
         if cv.waitKey(1) & 0xFF == ord('q'):
             break
 
 cap.release()
 cv.destroyAllWindows()
+

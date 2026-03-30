@@ -21,4 +21,8 @@ __pycache__/
 Thumbs.db
 
 # Evaluation Reports
+# Evaluation Reports
 evaluation/*.json
+
+# Data backup (Phase 3)
+calibration/dataset/

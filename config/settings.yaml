@@ -10,7 +10,7 @@ camera:
 
 ear:
   blink_threshold: 0.21       # Dưới ngưỡng này = đang nhắm
-  short_blink_min_ms: 120     # Chớp NGẮN HƠN ngưỡng này → bỏ qua (chớp tự nhiên)
+  short_blink_min_ms: 250     # Chớp NGẮN HƠN ngưỡng này → bỏ qua (chớp tự nhiên)
   short_blink_max_ms: 400     # Chớp dưới ngưỡng này = click trái
   long_blink_min_ms: 600      # Nhắm lâu (click phải)
   consecutive_frames: 3       # Cần 3 frame liên tiếp (~100ms) để xác nhận blink

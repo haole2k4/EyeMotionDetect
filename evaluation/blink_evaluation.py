@@ -14,7 +14,6 @@ Chạy:
 """
 
 import os
-os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts"
 
 import sys
 import argparse
@@ -370,12 +369,23 @@ def main():
         print("ERROR: Cannot open webcam.")
         sys.exit(1)
 
-    WIN = "Blink Evaluation — Phase 1.3"
-    cv.namedWindow(WIN, cv.WINDOW_NORMAL)
-    cv.resizeWindow(WIN, 1280, 720)
-
     ret, frame = cap.read()
-    frame_shape = frame.shape if ret else (720, 1280, 3)
+    if ret:
+        frame_shape = frame.shape
+        fh, fw = frame_shape[:2]
+    else:
+        fh, fw = 480, 640
+        frame_shape = (fh, fw, 3)
+
+    # Scale window to fit nicely — max 640px wide, keep aspect ratio
+    MAX_W = 640
+    scale = MAX_W / fw
+    win_w = int(fw * scale)
+    win_h = int(fh * scale)
+
+    WIN = "Blink Evaluation - Phase 1.3"
+    cv.namedWindow(WIN, cv.WINDOW_NORMAL | cv.WINDOW_KEEPRATIO)
+    cv.resizeWindow(WIN, win_w, win_h)
 
     results = []
     for tc_id in tc_list:
