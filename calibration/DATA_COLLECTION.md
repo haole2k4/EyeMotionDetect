@@ -16,20 +16,39 @@ Tài liệu này hướng dẫn cách thu thập dữ liệu (yaw, pitch) ứng 
 > ```bash
 > python -m src.calibration
 > ```
-Màn hình sẽ chuyển thành kích thước Toàn màn hình (Fullscreen) với phông nền xám và 1 dấu chấm đỏ.
 
-1. Hãy nhìn tập trung vào hồng tâm (dấu thập) trong chấm đỏ.
-2. Hệ thống sẽ đợi **1.2 giây** để mắt bạn ổn định, sau đó thu **20 frames**. Màn hình sẽ chớp xanh nhẹ khi đang thu.
-3. Khi chấm đỏ nhảy sang điểm mới (theo thứ tự từ trái sang phải), hãy liếc mắt nhìn theo, nhưng lưu ý **hạn chế quay hẳn cả đầu, chủ yếu dùng chuyển động mắt** vì điểm mấu chốt là nhận diện Gaze.
-4. Lặp lại qua 12 điểm lưới.
+### Các bước
+1. Màn hình sẽ chuyển **Fullscreen** với phông nền xám. Nhấn **phím bất kỳ** để bắt đầu (hoặc **Escape** để thoát).
+2. Một **chấm tròn đỏ + dấu thập trắng** sẽ xuất hiện — hãy nhìn tập trung vào hồng tâm.
+3. Hệ thống đợi **1.2 giây** để mắt ổn định, sau đó chấm chuyển **xanh lá** và thu **20 frames**.
+4. Chấm nhảy sang điểm tiếp theo (trái → phải, trên → dưới). Hãy **liếc mắt** theo, hạn chế quay đầu.
+5. Mỗi vòng lặp đi qua **12 điểm** (lưới 4×3).
+
+### Luồng vòng lặp (Rounds)
+| Vòng | Hành vi |
+|------|---------|
+| 1 → 3 | **Bắt buộc** — chạy tự động, không hỏi |
+| 4 | Hiện hộp thoại hỏi: *"Bạn có muốn thu thêm vòng 4?"* |
+| 5 | Hiện hộp thoại hỏi: *"Bạn có muốn thu thêm vòng 5?"* |
+| Sau vòng 5 | **Kết thúc** — hiển thị tổng kết và đóng |
+
+> Bạn có thể nhấn **Escape** bất cứ lúc nào. Nếu đã có data, hệ thống sẽ **lưu lại** dữ liệu đã thu trước khi thoát.
 
 ## Đề xuất Số lượng Bản ghi Cần thiết (Training Records)
 
-Để bộ dữ liệu có đủ độ phủ, tránh hiện tượng overfitting khi fit thuật toán tuyến tính/đa thức (Polynomial Regression bậc 2):
+Để bộ dữ liệu có đủ độ phủ, tránh hiện tượng overfitting khi fit Polynomial Regression bậc 2:
 
-- **Số Vòng Lặp (Reps):** Bạn nên thực hiện chạy script qua 12 điểm lưới từ **3 - 5 vòng (reps)**. Việc này có thể thực hiện thông qua config `samples_per_point` hoặc chạy lại Script 3-5 lần để gộp Data.
-- **Tổng số Records cho mỗi cá nhân/môi trường:** Ít nhất **36 bản ghi đến 60 bản ghi** (Mỗi bản ghi đại diện cho 20 frames với (yaw, pitch) ở mỗi mức, lấy giá trị trung vị).
-- **Lượng Ảnh dataset dự phòng:** Với quy mô 60 bản ghi (mỗi bản 20 frames), bạn sẽ có khoảng **1200 ảnh khuôn mặt/mắt** (cropped images) với lable (x, y) chuẩn, cực kỳ giá trị để dùng cho fine-tune (Giải Pháp B).
+| Thông số | Giá trị đề xuất | Ghi chú |
+|----------|-----------------|---------|
+| Số điểm lưới | 12 (4×3) | Phủ 4 góc + trung tâm |
+| Số vòng tối thiểu | **3** (bắt buộc) | 36 mẫu — đủ cho fit cơ bản |
+| Số vòng khuyến nghị | **5** | 60 mẫu — model ổn định, ít overfit |
+| Frames / mẫu | 20 | Lấy median để loại nhiễu |
+| Tổng ảnh khuôn mặt (5 vòng) | ~**1200 ảnh** | Dùng cho fine-tune Giải pháp B |
+
+- **36 mẫu (3 vòng):** Đủ để fit Polynomial bậc 2 (6 hệ số × 2 trục = 12 tham số, 36 >> 12).
+- **60 mẫu (5 vòng):** Cho phép held-out validation (~12 mẫu test) và giảm thiểu ảnh hưởng nhiễu.
+- **Ảnh dataset dự phòng:** Với 60 bản ghi × 20 frames = **1200 ảnh** khuôn mặt đã crop cùng label `(screen_x, screen_y)` — cực kỳ giá trị cho fine-tune (Giải pháp B).
   
 > [!NOTE]
-> File JSON metadata và tất cả ảnh thu được sẽ được tự động lưu trong thư mục `calibration/dataset/` kết hợp với TimeStamp. Folder này đã được loại trừ khỏi git để tránh đầy kho lưu trữ.
+> File JSON metadata và tất cả ảnh thu được được tự động lưu trong `calibration/dataset/`. Folder này đã được loại trừ khỏi git (`.gitignore`) để tránh đầy kho lưu trữ.
