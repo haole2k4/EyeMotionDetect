@@ -1,175 +1,107 @@
-# EyeMotionDetect
+# EyeMotionDetect (Web Edition)
 
-Điều khiển chuột máy tính bằng cử động mắt, sử dụng **MediaPipe Face Mesh** để phát hiện nháy mắt (EAR) và **L2CS-Net** để ước lượng hướng nhìn.
+Điều khiển chuột máy tính bằng cử động mắt hoàn toàn trên trình duyệt, sử dụng **MediaPipe Tasks Vision** để phát hiện nháy mắt (EAR), trích xuất đặc trưng khuôn mặt (Landmarks, Head Pose, Iris), kết hợp với các mô hình Machine Learning (Polynomial Regression / MLP Deep Learning) để ước lượng và điều hướng tọa độ màn hình. 
 
-## Kiến trúc 2026 (Hybrid Edge-AI)
+Dự án đã được chuyển đổi sang kiến trúc **Monorepo (Turborepo)** chạy hoàn toàn bằng TypeScript, bao gồm hệ thống Edge-AI suy luận trực tiếp ở frontend và backend để cá nhân hóa dữ liệu.
 
-Hướng phát triển của dự án là kết hợp:
+## Kiến trúc Hệ thống (Hybrid Edge-AI 2026)
 
-- Suy luận thời gian thực trên máy người dùng (Edge): Face landmarks, blink, gaze, smoothing.
-- Tinh chỉnh theo người dùng (Personalization): calibration và lớp refine hướng nhìn.
-- Quản trị dữ liệu (Backend): hồ sơ, calibration history, model weights.
+- **Frontend (Edge Computation):** Xây dựng bằng Next.js 15, MediaPipe Face Landmarker, cấu hình Web Workers, và TensorFlow.js (WebGPU backend). Mọi tác vụ suy luận thời gian thực (realtime inference) đều chạy nội bộ trên trình duyệt của người dùng với độ trễ tối thiểu (< 150ms).
+- **Backend (Data & Personalization):** Xây dựng bằng NestJS 11 kết hợp PostgreSQL. Chịu trách nhiệm quản lý tài khoản người dùng, lưu trữ lịch sử tinh chỉnh (calibration), cấu hình nháy mắt, và model weights (tọa độ mapper) cho từng người dùng riêng biệt.
+- **Monorepo:** Quản lý mã nguồn tập trung bằng `pnpm` workspaces và `turborepo`.
 
-### Trạng thái hiện tại (rà soát theo code)
+## Cấu trúc Dự án
 
-- **Phase 1 — Blink Detection:** gần hoàn tất, đã có EAR + FSM + bộ test TC-1..TC-5.
-- **Phase 2 — Gaze Estimation:** có wrapper L2CS-Net, chưa ghép đầy đủ vào vòng điều khiển chuột.
-- **Phase 3 — Calibration:** đã có UI thu data 4x3 và lưu JSON/ảnh mặt; chưa fit mapper để suy ra tọa độ màn hình.
-- **Phase 4+ (Smoother, control loop, backend):** chưa triển khai đầy đủ.
+```text
+EyeMotionDetect/
+├── apps/
+│   ├── api/            # Backend NestJS (REST API, TypeORM, Auth, Profiles, Weights DB)
+│   └── web/            # Frontend Next.js (MediaPipe, TF.js, UI, Calibration)
+├── packages/
+│   └── shared-types/   # (Dự kiến) Shared types dùng chung cho cả frontend/backend
+├── docker-compose.dev.yml # Docker compose khởi tạo PostgreSQL dev
+├── pnpm-workspace.yaml
+└── turbo.json
+```
 
-Đánh giá tổng thể theo scope full-stack hiện tại: khoảng **40%**.
+## Yêu cầu Hệ thống
 
-### Phần nên giữ nguyên khi chuyển sang web
-
-1. Logic EAR (công thức Soukupova) và cách tính trung bình 2 mắt.
-2. FSM phân loại blink short/long/sustained + cooldown.
-3. Quy trình calibration theo lưới 4x3, lấy median nhiều frame mỗi điểm.
-
-### Phần cần bổ sung để đạt bản Web sản phẩm
-
-1. Hoàn thiện Calibration Mapper (Polynomial Regression bậc 2) để map (yaw, pitch) -> (screen_x, screen_y).
-2. Hoàn thiện Gaze Smoother (EMA + outlier rejection + dead zone).
-3. Hoàn thiện control loop di chuột/click ổn định theo realtime state.
-4. Xây backend NestJS + PostgreSQL để lưu profile, calibration, và model artifacts.
-5. Bổ sung Morse Code Engine (FSM) nếu mục tiêu điều khiển bằng chuỗi blink.
-
-### Ghi chú quan trọng
-
-- `polynomial_degree: 2` đã có trong cấu hình, nhưng mapper chưa phải là luồng chạy hoàn chỉnh trong code hiện tại.
-- Calibration hiện đang ở mức thu dữ liệu tốt, chưa có bước fit model + load lại phiên sau như production requirement.
-
-### Single Source of Truth cho Blink Thresholds
-
-Để tránh lệch giữa code và tài liệu, dự án tạm thời dùng quy ước sau:
-
-1. **Nguồn sự thật cho đánh giá runtime hiện tại:** `src/blink_detector.py` (vì demo/evaluation đang khởi tạo trực tiếp `BlinkDetector()`).
-2. **`config/settings.yaml` là nguồn cấu hình mục tiêu:** sẽ thành nguồn sự thật chính khi pipeline đọc config đầy đủ.
-3. **Khi có lệch số giữa runtime và config:** test pass/fail ở giai đoạn hiện tại bám theo runtime thực thi.
-
-| Tham số              | Runtime hiện tại (`src/blink_detector.py`) | Config hiện tại (`config/settings.yaml`) |
-| -------------------- | ------------------------------------------ | ---------------------------------------- |
-| `blink_threshold`    | 0.21                                       | 0.21                                     |
-| `short_blink_min_ms` | 120                                        | 250                                      |
-| `short_blink_max_ms` | 400                                        | 400                                      |
-| `long_blink_min_ms`  | 600                                        | 600                                      |
-| `long_blink_max_ms`  | 2000                                       | _(chưa khai báo)_                        |
-| `cooldown_ms`        | 600                                        | _(chưa khai báo)_                        |
-| `consecutive_frames` | 3                                          | 3                                        |
+- **Node.js**: `v22.14.0+`
+- **Package Manager**: `pnpm v9.15.4+` (kèm hệ thống cache Turborepo)
+- **Cơ sở dữ liệu**: Đã cài đặt [Docker](https://www.docker.com/) (dành cho PostgreSQL container)
+- **Trình duyệt**: Hỗ trợ chuẩn AI WebGPU mới nhất (Chrome 121+ / Edge 121+).
 
 ---
 
-## Yêu cầu
+## Hướng dẫn Thiết lập & Khởi chạy
 
-- Python **3.12**
-- GPU NVIDIA (khuyến nghị RTX 3050 4GB+), CUDA đã cài sẵn
-- Webcam ≥ 720p 30fps
+Để máy tính của bạn tự động chạy được hệ thống, vui lòng thực hiện tuần tự các bước dưới đây:
 
----
+### Bước 0: Chuẩn bị Môi trường (Prerequisites)
+- Máy đã cài đặt **Node.js**: Phiên bản tối thiểu `v22.14.0`.
+- Cài đặt **pnpm** (Package manager chính của dự án):
+  ```bash
+  npm install -g pnpm@9.15.4
+  ```
+- Máy tính đã cài đặt **Docker Desktop** (hoặc trình giả lập daemon container tương đương).
 
-## Cài đặt
+### Bước 1: Cài đặt Dependencies
 
-### 1. Clone repo
+Mở bash/terminal, clone project theo địa chỉ repository hiện tại và cài đặt các phụ thuộc (dependencies) xuyên suốt toàn bộ workspace:
 
 ```bash
 git clone git@github.com:haole2k4/EyeMotionDetect.git
 cd EyeMotionDetect
-```
 
-### 2. Tạo môi trường ảo và cài thư viện
+# Tải và build cache các thư viện thông qua pnpm
+pnpm install
+```
+*(Tiến trình này sẽ động bộ các cài đặt từ module trong `apps/api` cho backend và `apps/web` cho frontend)*
+
+### Bước 2: Khởi tạo Cơ sở Dữ liệu (PostgreSQL)
+
+Mở phần mềm Docker, sau đó khởi chạy server database PostgreSQL từ file thiết lập có sẵn ở thư mục gốc:
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+docker compose -f docker-compose.dev.yml up -d
+```
+> **Thông tin DB**: Container được tạo sẽ tự động chạy ngầm mở port `5432`, với database mặc định: `gaze_dev`, user: `gaze`, pass: `gaze_dev_pass`. Môi trường API Backend Node.js cũng sẽ tự động đọc cấu hình này để liên kết.
+
+*(Tùy chọn) - Nếu bạn sử dụng TypeORM migrations thay vì thẻ `synchronize: true`, bạn cần seed dữ liệu ban đầu cho database:*
+```bash
+# Tiến hành nạp schema cho Database
+cd apps/api
+pnpm typeorm migration:run -d src/data-source.ts
+cd ../..
 ```
 
-### 3. Tải mô hình MediaPipe
+### Bước 3: Khởi chạy Máy chủ Development
+
+Quay lại vị trí gốc của ứng dụng (thư mục có chứa tệp `turbo.json`), dùng Turborepo để khởi động đồng thời tất cả các client:
 
 ```bash
-wget -O face_landmarker.task \
-  https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task
+# Lệnh duy nhất tự động chạy dev cả ở Web lẫn API theo turbo config
+pnpm run dev
 ```
 
-### 4. Tải mô hình L2CS-Net
+Tiến trình khi chạy thành công sẽ mở ra 2 cổng dịch vụ cục bộ:
+- **🌐 Trải nghiệm Trực tiếp (Web Client - Giao diện điều khiển)**: Mở trình duyệt tại [http://localhost:3000](http://localhost:3000)
+- **⚙️ Backend Service (API Server - Hệ thống Data)**: Các request backend tương tác tại [http://localhost:3001](http://localhost:3001)
 
-Tải file `L2CSNet_gaze360.pkl` (~100MB) từ [L2CS-Net releases](https://github.com/Ahmednull/L2CS-Net) rồi đặt vào thư mục:
-
-```
-models/L2CSNet_gaze360.pkl
-```
+> **Lưu ý (Troubleshooting)**: Hãy mở `Developer Console (F12)` trên Chrome và ấn tab *Performance* để xem MediaPipe có đang hoạt động tốt trên WebGPU hay không. Nếu FPS quá thấp, hãy đảm bảo trình duyệt của bạn đang bật tính năng hỗ trợ WebGPU.
 
 ---
 
-## Chạy
+## Lộ trình Phát triển (Quy hoạch theo `Plan.md`)
 
-### Kiểm tra blink detector (Phase 1)
+Chiến lược triển khai hệ thống Web được chia thành các Phase với chuẩn hoá rõ ràng (Xem chi tiết kỹ thuật trong tệp [Plan.md](./Plan.md)):
 
-```bash
-python facial_video_landmark.py
-```
+* **Phase 0:** Cấu hình Monorepo, WebGPU check, NestJS & Next.js khởi tạo dự án.
+* **Phase 1:** Triển khai Database Schema & API Foundation (Lưu trữ và phục hồi MLP weights/Polynomial coeffs cá nhân).
+* **Phase 2:** Tích hợp MediaPipe Integration & Feature Extraction (FaceLandmarker, Iris Normalization, ma trận góc Face Pose). Xây dựng cơ chế động phân tích Tỷ lệ nháy mắt (Adaptive EAR).
+* **Phase 3:** Trải nghiệm lưới điểm Calibration (Polynomial Regression) cho cá nhân. Thu thập chắt lọc (median buffer) tiến tới fit mô hình hồi quy.
+* **Phase 4:** Huấn luyện mô hình cá nhân hóa bằng ML (TF.js MLP Model), train ngay tại phía Edge Client dựa trên mẫu dữ liệu thu được sau hiệu chuẩn, đẩy trọng số về server lưu trữ.
+* **Phase 5:** Bộ lọc Gaze Smoother (giảm nhiễu điểm nhìn) bằng các thuật toán như kỹ thuật EMA, 1€ Filter triệt để triệt tiêu tín hiệu Jitter và Outlier noise.
+* **Phase 6:** Đưa vòng lặp suy luận thị giác vào background Worker, giải phóng LUỒNG MÀN HÌNH CHÍNH (main thread) của trình duyệt. Tối ưu khung hình FPS.
 
-### Đánh giá blink detector (Phase 1.3)
-
-```bash
-python evaluation/blink_evaluation.py          # Chạy toàn bộ 5 test case
-python evaluation/blink_evaluation.py --tc 3   # Chỉ chạy test case cụ thể
-```
-
-Nhấn **ESC** hoặc **q** để thoát. Kết quả được lưu tự động vào `evaluation/`.
-
----
-
-## Cấu trúc thư mục
-
-```
-EyeMotionDetect/
-├── config/settings.yaml       # Ngưỡng EAR, thông số smoother...
-├── models/                    # Đặt file .pkl của L2CS-Net vào đây
-├── src/
-│   └── blink_detector.py      # Logic EAR + phân loại blink
-├── evaluation/
-│   ├── blink_evaluation.py    # Script đánh giá Phase 1.3
-│   └── TEST_CASES.md          # Mô tả các test case
-├── facial_video_landmark.py   # Demo blink detector với webcam
-└── requirements.txt
-```
-
----
-
-## Điều chỉnh ngưỡng
-
-Chỉnh tham số trong `config/settings.yaml`:
-
-| Tham số              | Mặc định | Ý nghĩa                               |
-| -------------------- | -------- | ------------------------------------- |
-| `blink_threshold`    | 0.21     | EAR dưới mức này = đang nhắm          |
-| `short_blink_min_ms` | 250      | Chớp NGẮN HƠN ngưỡng này sẽ bị bỏ qua |
-| `short_blink_max_ms` | 400      | Giới hạn trên của click trái          |
-| `long_blink_min_ms`  | 600      | Ngưỡng dưới của click phải            |
-| `consecutive_frames` | 3        | Số frame liên tiếp để xác nhận blink  |
-
-Lưu ý: các ngưỡng ở bảng này là **config file hiện tại**. Trong giai đoạn code hiện tại, runtime của demo/evaluation vẫn dùng default trong `src/blink_detector.py`.
-
----
-
-## Release Readiness Checklist (pre-Next.js)
-
-### Gate 1 — Logic nhất quán
-
-- [ ] Bảng ngưỡng blink thống nhất giữa runtime và config (không còn drift).
-- [ ] Tài liệu test bám đúng ngưỡng đang dùng ở runtime.
-
-### Gate 2 — Chất lượng realtime
-
-- [ ] TC-1..TC-5 pass ổn định trong 2 phiên test độc lập.
-- [ ] FPS thực tế >= 25 và không có false click tăng đột biến khi ánh sáng thay đổi nhẹ.
-
-### Gate 3 — Mapping usable
-
-- [ ] Calibration mapper chạy end-to-end (fit + infer + load lại).
-- [ ] MAE/Jitter đạt ngưỡng tối thiểu đã chốt trong test plan.
-
-### Gate 4 — Productization tối thiểu
-
-- [ ] Có phương án persistence cho calibration/model theo user.
-- [ ] Có fallback rõ ràng khi mất face tracking (cursor freeze + recover).
+> *Lưu ý: Dự kiến phiên bản Web loại bỏ hoàn toàn Python để tăng mức độ liền mạch sản phẩm cho các users phổ thông.*
