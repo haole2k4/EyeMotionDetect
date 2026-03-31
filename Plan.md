@@ -1,695 +1,1370 @@
-# Eye Gaze Mouse Control — Kế Hoạch Chi Tiết Giải Pháp A
+# Eye Gaze Mouse Control — Web Architecture Plan
+## MediaPipe JS + TF.js + Next.js (Edge-AI 2026)
 
-## L2CS-Net + Personal Calibration Layer
-
-> **Mục tiêu:** Thay thế chuột máy tính bằng cử động mắt, hỗ trợ click trái/phải qua blink và di chuyển cursor qua gaze direction.
-> **Thời gian ước tính:** 5–8 ngày làm việc
-> **Yêu cầu phần cứng:** GPU RTX 3050 4GB VRAM, Webcam ≥ 720p 30fps
-
----
-
-## Tổng quan kiến trúc
-
-```
-[Webcam]
-   │
-   ▼
-[MediaPipe Face Mesh]
-   ├── EAR (Eye Aspect Ratio) ──────────────► [Blink/Click Handler]
-   │                                                │
-   └── Face landmarks ──► [L2CS-Net Inference]      │
-                               │ (yaw, pitch)        │
-                               ▼                     │
-                    [Calibration Mapper]             │
-                      (Polynomial Regression)        │
-                               │ (screen_x, screen_y)│
-                               ▼                     ▼
-                         [Gaze Smoother] ──► [pyautogui mouse control]
-```
+> **Mục tiêu:** Điều khiển chuột bằng mắt hoàn toàn trên browser, không cần server xử lý ảnh, cá nhân hóa cho từng người dùng.
+> **Thời gian ước tính:** 10–14 ngày làm việc
+> **Target:** 60FPS, latency < 150ms, MAE < 80px sau calibration
 
 ---
 
-## Status rà soát thực tế (2026-03-30)
+## Stack & Phiên bản cố định
 
-### Đã triển khai ổn
+```
+# Frontend
+next                          15.3.1
+react                         19.1.0
+typescript                    5.8.3
+@mediapipe/tasks-vision       0.10.22
+@tensorflow/tfjs              4.22.0
+@tensorflow/tfjs-backend-webgpu  4.22.0
 
-- EAR và Blink FSM đã có code riêng, có test case đánh giá.
-- Calibration UI đã có flow đầy đủ: hiển thị điểm, đợi ổn định, thu nhiều frame, lấy median, lưu dataset.
-- L2CS-Net wrapper đã hoạt động cho suy luận yaw/pitch.
+# Backend
+@nestjs/core                  11.1.0
+@nestjs/common                11.1.0
+@nestjs/typeorm               11.0.0
+typeorm                       0.3.21
+pg                            8.13.3
+class-validator               0.14.2
 
-### Chưa hoàn thiện theo nghĩa product
+# Tooling
+pnpm                          9.15.4
+node                          22.14.0
+```
 
-- Calibration Mapper (fit/infer polynomial) chưa là một luồng hoàn chỉnh để phục vụ runtime điều khiển chuột.
-- Smoother và mouse-control loop chưa hoàn tất như kiến trúc mục tiêu.
-- Chưa có backend persistence cho user profile, calibration history, model versions.
-- Morse engine (nếu dùng blink sequence để nhập lệnh) chưa được đặc tả và implement.
-
-### Quy ước khi port web
-
-1. **Giữ nguyên logic lõi**: EAR, blink FSM, calibration sampling strategy.
-2. **Không overclaim implementation**: các mục mapper/smoother/control/backend ghi rõ planned cho tới khi pass đủ test.
-3. **Ưu tiên MVP đúng thứ tự**: Mapper -> Smoother -> Control loop -> Backend -> Fine-tuning nâng cao.
+> **Quan trọng:** Ghim cứng phiên bản trong `package.json` bằng cách bỏ `^` và `~`. TF.js và MediaPipe thay đổi API thường xuyên.
 
 ---
 
-## Phase 0 — Chuẩn bị môi trường
-
-### 0.1 — Cấu trúc thư mục dự án
+## Cấu trúc dự án
 
 ```
-gaze_mouse/
-├── config/
-│   └── settings.yaml           # Threshold, alpha, screen resolution...
-├── models/
-│   └── L2CSNet_gaze360.pkl     # Pretrained weights
-├── calibration/
-│   ├── calibrator.pkl          # Saved calibration model
-│   └── calibration_data.json   # Raw calibration points (backup)
-├── src/
-│   ├── gaze_estimator.py       # Wrapper L2CS-Net
-│   ├── blink_detector.py       # EAR logic
-│   ├── calibration.py          # Calibration UI + mapper
-│   ├── smoother.py             # EMA + outlier rejection
-│   ├── mouse_controller.py     # pyautogui wrapper
-│   └── pipeline.py             # Main loop
-├── evaluation/
-│   ├── accuracy_test.py        # Đánh giá độ chính xác
-│   └── latency_test.py         # Đánh giá độ trễ
-├── main.py
-└── requirements.txt
-```
-
-### 0.2 — Dependencies
-
-```
-# requirements.txt
-l2cs>=1.0.0
-mediapipe>=0.10.0
-opencv-python>=4.8.0
-numpy>=1.24.0
-scikit-learn>=1.3.0
-pyautogui>=0.9.54
-pyyaml>=6.0
-joblib>=1.3.0
-tk                    # Calibration UI (thường có sẵn)
-```
-
-> Lưu ý: phiên bản python là 3.12
-
-### 0.3 — Kiểm tra CUDA
-
-- Xác nhận PyTorch nhận GPU: `torch.cuda.is_available()` trả về `True`
-- Kiểm tra VRAM: `nvidia-smi` → phải thấy ≥ 3.5GB free trước khi chạy
-- Download pretrained weights từ repository L2CS-Net (file `.pkl` ~100MB)
-- Chạy inference demo một lần với ảnh tĩnh để xác nhận pipeline hoạt động
-
-### 0.4 — Cấu hình settings.yaml
-
-```yaml
-# config/settings.yaml
-screen:
-  width: 1920
-  height: 1080
-
-camera:
-  index: 0
-  width: 1280
-  height: 720
-  fps: 30
-
-ear:
-  blink_threshold: 0.21 # Dưới ngưỡng này = đang nhắm
-  short_blink_min_ms: 250 # Chớp NGẮN HƠN ngưỡng này -> bỏ qua (chớp tự nhiên)
-  short_blink_max_ms: 400 # Chớp dưới ngưỡng này = click trái
-  long_blink_min_ms: 600 # Nhắm lâu (click phải)
-  consecutive_frames: 3 # Số frame liên tiếp để xác nhận blink
-
-smoother:
-  ema_alpha: 0.25 # Nhỏ = mượt hơn nhưng lag hơn
-  history_window: 7
-  outlier_threshold_x: 250
-  outlier_threshold_y: 180
-  dead_zone_px: 8 # Không di chuyển nếu delta < 8px
-
-calibration:
-  grid_cols: 4
-  grid_rows: 3
-  samples_per_point: 20
-  stable_wait_ms: 1200 # Chờ trước khi thu sample
-  polynomial_degree: 2
+gaze-web/
+├── apps/
+│   ├── web/                          # Next.js 15 app
+│   │   ├── app/
+│   │   │   ├── (auth)/
+│   │   │   │   ├── login/page.tsx
+│   │   │   │   └── register/page.tsx
+│   │   │   ├── calibration/page.tsx  # Phase 3
+│   │   │   ├── dashboard/page.tsx
+│   │   │   └── layout.tsx
+│   │   ├── components/
+│   │   │   ├── gaze/
+│   │   │   │   ├── GazeProvider.tsx  # Context + main loop
+│   │   │   │   ├── CalibrationUI.tsx
+│   │   │   │   └── DebugOverlay.tsx
+│   │   │   └── ui/
+│   │   ├── lib/
+│   │   │   ├── gaze/
+│   │   │   │   ├── mediapipe.ts      # Phase 2
+│   │   │   │   ├── feature-extractor.ts  # Phase 2
+│   │   │   │   ├── ear-detector.ts   # Phase 2
+│   │   │   │   ├── calibration.ts    # Phase 3
+│   │   │   │   ├── polynomial.ts     # Phase 3
+│   │   │   │   ├── mlp-model.ts      # Phase 4
+│   │   │   │   └── smoother.ts       # Phase 5
+│   │   │   └── api/
+│   │   │       └── client.ts
+│   │   └── workers/
+│   │       └── gaze.worker.ts        # Phase 6
+│   └── api/                          # NestJS app
+│       ├── src/
+│       │   ├── auth/
+│       │   ├── weights/
+│       │   │   ├── weights.controller.ts
+│       │   │   ├── weights.service.ts
+│       │   │   └── weights.entity.ts
+│       │   └── users/
+│       └── migrations/
+├── packages/
+│   └── shared-types/                 # Types dùng chung
+├── evaluation/                       # Phase 7
+│   ├── accuracy-test.ts
+│   ├── latency-test.ts
+│   └── results/
+├── pnpm-workspace.yaml
+└── turbo.json
 ```
 
 ---
 
-## Phase 1 — Blink Detection (EAR)
+## Phase 0 — Project Setup & Tooling
 
-### 1.1 — Implement EAR
+### 0.1 — Khởi tạo monorepo
 
-**Công thức Soukupová:**
+```bash
+# Tạo workspace
+mkdir gaze-web && cd gaze-web
+pnpm init
 
-```
-EAR = (||p2-p6|| + ||p3-p5||) / (2 × ||p1-p4||)
-```
+# pnpm-workspace.yaml
+cat > pnpm-workspace.yaml << 'EOF'
+packages:
+  - 'apps/*'
+  - 'packages/*'
+EOF
 
-- `p1`–`p6` là 6 landmark quanh mắt theo thứ tự: góc trái, trên trái, trên phải, góc phải, dưới phải, dưới trái
-- MediaPipe Face Mesh trả về 478 landmarks — map sang index của mắt trái và mắt phải
+# Cài Turborepo
+pnpm add -Dw turbo@2.4.4
 
-**MediaPipe landmark index (mắt):**
+# Tạo Next.js app
+pnpm create next-app@15.3.1 apps/web \
+  --typescript --tailwind --app --no-src-dir
 
-| Vị trí         | Mắt trái | Mắt phải |
-| -------------- | -------- | -------- |
-| Góc trái (p1)  | 362      | 33       |
-| Trên trái (p2) | 385      | 160      |
-| Trên phải (p3) | 387      | 158      |
-| Góc phải (p4)  | 263      | 133      |
-| Dưới phải (p5) | 373      | 153      |
-| Dưới trái (p6) | 380      | 144      |
+# Tạo NestJS app
+cd apps && pnpm dlx @nestjs/cli@11.0.7 new api \
+  --package-manager pnpm --language typescript
 
-### 1.2 — Phân loại blink
-
-```
-EAR < threshold (0.21)
-        │
-        ▼
-   Bắt đầu đếm thời gian
-        │
-   EAR > threshold
-        │
-  ├── Thời gian < 120ms      → Bỏ qua (chớp tự nhiên)
-  ├── Thời gian 120-400ms    → SHORT BLINK → Click trái
-  ├── Thời gian 600-2000ms   → LONG BLINK  → Click phải
-  └── Vùng còn lại           → Bỏ qua
+cd ../
 ```
 
-**Nguồn sự thật hiện tại cho blink timing:** `src/blink_detector.py`.
-`config/settings.yaml` sẽ là nguồn chính khi pipeline đọc config đầy đủ ở runtime.
+### 0.2 — Cài dependencies Frontend
 
-**Lưu ý quan trọng:**
+```bash
+cd apps/web
 
-- Tính EAR trung bình của **cả hai mắt** để tránh false positive khi một mắt bị che
-- Thêm **cooldown 600ms** sau mỗi click để tránh double-click ngoài ý muốn
-- Trong lúc blink (EAR < threshold), **đừng di chuyển cursor** — người dùng không nhìn được màn hình
+# MediaPipe — quan trọng: dùng @mediapipe/tasks-vision (API mới 2024+)
+# KHÔNG dùng @mediapipe/face_mesh (deprecated)
+pnpm add @mediapipe/tasks-vision@0.10.22
 
-### 1.3 — Evaluation cho Blink Detector
+# TensorFlow.js — cài đầy đủ 3 package
+pnpm add @tensorflow/tfjs@4.22.0
+pnpm add @tensorflow/tfjs-backend-webgpu@4.22.0
+pnpm add @tensorflow/tfjs-backend-wasm@4.22.0
 
-**Test cases cần pass:**
+# Utilities
+pnpm add comlink@4.4.2          # Web Worker bridge
+pnpm add zustand@5.0.3          # State management
+pnpm add idb@8.0.2              # IndexedDB wrapper (lưu calibration offline)
+pnpm add @tanstack/react-query@5.67.3
+```
 
-| Test                        | Cách thực hiện                           | Tiêu chí đạt           |
-| --------------------------- | ---------------------------------------- | ---------------------- |
-| False positive rate         | Ngồi bình thường 1 phút không cố ý click | < 2 click ngoài ý muốn |
-| Chớp tự nhiên không trigger | Chớp mắt bình thường liên tục            | 0 click được tạo ra    |
-| Short blink reliability     | Cố ý chớp 20 lần                         | ≥ 18/20 được nhận diện |
-| Long blink reliability      | Cố ý nhắm 2s, 10 lần                     | ≥ 9/10 được nhận diện  |
-| Phân biệt trái/phải         | 10 short + 10 long lần lượt              | Không nhầm loại        |
+### 0.3 — Cài dependencies Backend
+
+```bash
+cd apps/api
+
+pnpm add @nestjs/typeorm@11.0.0 typeorm@0.3.21 pg@8.13.3
+pnpm add @nestjs/config@3.3.0
+pnpm add @nestjs/jwt@10.2.0 @nestjs/passport@10.0.3
+pnpm add class-validator@0.14.2 class-transformer@0.5.1
+pnpm add bcrypt@5.1.1
+pnpm add -D @types/bcrypt @types/pg
+```
+
+### 0.4 — Kiểm tra WebGPU support
+
+```typescript
+// apps/web/lib/check-runtime.ts
+export async function checkRuntime(): Promise<{
+  webgpu: boolean;
+  wasm: boolean;
+  mediapipe: boolean;
+}> {
+  const webgpu = 'gpu' in navigator && !!(await navigator.gpu?.requestAdapter());
+  const wasm = typeof WebAssembly !== 'undefined';
+
+  return { webgpu, wasm, mediapipe: wasm || webgpu };
+}
+```
+
+```bash
+# Chạy check trong browser console
+# Chrome 121+ và Edge 121+ hỗ trợ WebGPU
+# Firefox cần enable dom.webgpu.enabled trong about:config
+```
+
+### 0.5 — Database setup
+
+```bash
+# Docker compose cho development
+cat > docker-compose.dev.yml << 'EOF'
+services:
+  postgres:
+    image: postgres:17.4-alpine
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: gaze_dev
+      POSTGRES_USER: gaze
+      POSTGRES_PASSWORD: gaze_dev_pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
+EOF
+
+docker compose -f docker-compose.dev.yml up -d
+```
+
+**Checklist Phase 0:**
+- [ ] `pnpm turbo build` chạy không lỗi
+- [ ] WebGPU detected: `true` trên Chrome
+- [ ] PostgreSQL kết nối thành công từ NestJS
+- [ ] Hot reload hoạt động cả hai app
 
 ---
 
-## Phase 2 — Gaze Estimation với L2CS-Net
+## Phase 1 — Database Schema & API Foundation
 
-### 2.1 — Wrapper L2CS-Net
+### 1.1 — Entity definitions
 
-- Khởi tạo `Pipeline` từ l2cs với device `cuda`
-- Input: BGR frame từ OpenCV
-- Output: `results.yaw[0]` và `results.pitch[0]` (đơn vị: độ)
-- Kiểm tra `results.pitch is not None` trước khi dùng (trường hợp không detect được mặt)
+```typescript
+// apps/api/src/users/user.entity.ts
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, OneToOne } from 'typeorm';
 
-**Lưu ý về output:**
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-- Yaw: âm = nhìn trái, dương = nhìn phải (thông thường range -40° đến +40°)
-- Pitch: âm = nhìn lên, dương = nhìn xuống (thông thường -30° đến +30°)
-- Các giá trị này **không tuyến tính** với pixel trên màn hình → cần Calibration Mapper
+  @Column({ unique: true })
+  email: string;
 
-### 2.2 — Kiểm tra inference
+  @Column()
+  passwordHash: string;
 
-Trước khi tích hợp, đo:
+  @CreateDateColumn()
+  createdAt: Date;
 
-| Metric         | Cách đo                                           | Mục tiêu                        |
-| -------------- | ------------------------------------------------- | ------------------------------- |
-| Inference time | `time.perf_counter()` bao quanh `pipeline.step()` | < 33ms (≥ 30fps)                |
-| VRAM usage     | `nvidia-smi` lúc đang chạy                        | < 2.5GB                         |
-| CPU bottleneck | `htop` trong lúc chạy                             | CPU không phải nút thắt cổ chai |
+  @OneToOne(() => GazeWeights, weights => weights.user, { cascade: true })
+  gazeWeights: GazeWeights;
+}
+```
 
-**Nếu inference > 33ms:**
+```typescript
+// apps/api/src/weights/weights.entity.ts
+@Entity('gaze_weights')
+export class GazeWeights {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-- Thử giảm resolution input xuống 640×480
-- Dùng `torch.cuda.amp` (mixed precision)
-- Skip L2CS-Net 1 frame, interpolate ở giữa
+  @OneToOne(() => User)
+  @JoinColumn()
+  user: User;
+
+  // Polynomial Regression coefficients — dùng cho Quick Mode
+  @Column('jsonb', { nullable: true })
+  polyCoeffsX: number[];   // ~6 coefficients (degree 2, 2 inputs)
+
+  @Column('jsonb', { nullable: true })
+  polyCoeffsY: number[];
+
+  // MLP weights — dùng cho Personalized Mode
+  // Lưu dạng base64 string của tf.io.ModelArtifacts
+  @Column('text', { nullable: true })
+  mlpWeightsJson: string;   // model topology (~5KB)
+
+  @Column('bytea', { nullable: true })
+  mlpWeightsBin: Buffer;    // weight tensors (~15-25KB)
+
+  // EAR threshold cá nhân hóa
+  @Column('float', { default: 0.21 })
+  earThreshold: number;
+
+  // Metadata
+  @Column('int', { default: 0 })
+  calibrationPoints: number;   // Số điểm đã calibrate
+
+  @Column('float', { nullable: true })
+  lastMaePixels: number;       // MAE lần calibrate cuối
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+```
+
+### 1.2 — Migration
+
+```bash
+cd apps/api
+
+# Generate migration
+pnpm typeorm migration:generate src/migrations/InitSchema -d src/data-source.ts
+
+# Run migration
+pnpm typeorm migration:run -d src/data-source.ts
+```
+
+### 1.3 — Weights API endpoints
+
+```
+POST   /api/auth/register
+POST   /api/auth/login
+GET    /api/auth/me
+
+GET    /api/weights          → Load weights cho user hiện tại
+PUT    /api/weights/poly     → Lưu Polynomial coefficients
+PUT    /api/weights/mlp      → Lưu MLP weights (multipart/form-data)
+DELETE /api/weights          → Reset, xóa toàn bộ weights
+```
+
+### 1.4 — Kiểm tra API
+
+```bash
+# Health check
+curl http://localhost:3001/api/health
+
+# Register
+curl -X POST http://localhost:3001/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@test.com","password":"test1234"}'
+
+# Save poly weights
+curl -X PUT http://localhost:3001/api/weights/poly \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"coeffsX":[0.1,0.2,0.3,0.4,0.5,0.6],"coeffsY":[...]}'
+```
+
+**Checklist Phase 1:**
+- [ ] Migration chạy thành công, table tồn tại
+- [ ] Register/Login/JWT hoạt động
+- [ ] PUT weights → GET weights trả về đúng data
+- [ ] MLP binary blob lưu và load không bị corrupt (verify bằng MD5)
 
 ---
 
-## Phase 3 — Thu thập Calibration Data
+## Phase 2 — MediaPipe Integration & Feature Extraction
 
-### 3.1 — Thiết lập điều kiện thu data
+### 2.1 — Setup MediaPipe FaceLandmarker
 
-**Môi trường:**
+```typescript
+// apps/web/lib/gaze/mediapipe.ts
+import { FaceLandmarker, FilesetResolver, FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 
-- Ánh sáng ổn định, nguồn sáng phía trước (không bị ngược sáng)
-- Tắt đèn nền từ cửa sổ nếu buổi sáng sáng tốt
-- Không thay đổi điều kiện ánh sáng giữa chừng
+// Landmark indices — MediaPipe Face Mesh 478 points
+export const LANDMARKS = {
+  // Iris
+  IRIS_LEFT_CENTER:  468,
+  IRIS_RIGHT_CENTER: 473,
+  IRIS_LEFT_OUTER:   469,
+  IRIS_LEFT_TOP:     470,
+  IRIS_LEFT_INNER:   471,
+  IRIS_LEFT_BOTTOM:  472,
+  IRIS_RIGHT_OUTER:  474,
+  IRIS_RIGHT_TOP:    475,
+  IRIS_RIGHT_INNER:  476,
+  IRIS_RIGHT_BOTTOM: 477,
 
-**Camera:**
+  // Eye corners (cho normalize + EAR)
+  EYE_LEFT_OUTER:    33,
+  EYE_LEFT_INNER:    133,
+  EYE_LEFT_TOP_1:    160,
+  EYE_LEFT_TOP_2:    158,
+  EYE_LEFT_BOT_1:    144,
+  EYE_LEFT_BOT_2:    153,
 
-- Đặt cố định **trên màn hình**, giữa, ngang tầm mắt hoặc cao hơn 5cm
-- Khoảng cách mặt–màn hình: **55–65cm**, đo bằng thước
-- Không thay đổi vị trí camera sau khi calibrate
+  EYE_RIGHT_OUTER:   263,
+  EYE_RIGHT_INNER:   362,
+  EYE_RIGHT_TOP_1:   385,
+  EYE_RIGHT_TOP_2:   387,
+  EYE_RIGHT_BOT_1:   380,
+  EYE_RIGHT_BOT_2:   373,
 
-**Tư thế:**
+  // Head pose reference points
+  NOSE_TIP:          4,
+  CHIN:              152,
+  LEFT_TEMPLE:       234,
+  RIGHT_TEMPLE:      454,
+} as const;
 
-- Ngồi thẳng tự nhiên, đầu nhìn thẳng vào màn hình
-- **Không cần cố định đầu** — L2CS-Net xử lý head pose, nhưng tránh nghiêng đầu nhiều khi dùng
+export async function createFaceLandmarker(): Promise<FaceLandmarker> {
+  const filesetResolver = await FilesetResolver.forVisionTasks(
+    // Dùng CDN để tránh bundle size lớn
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm'
+  );
 
-### 3.2 — Quy trình calibration
-
-**Grid layout (4×3 = 12 điểm):**
-
+  return FaceLandmarker.createFromOptions(filesetResolver, {
+    baseOptions: {
+      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+      delegate: 'GPU',   // Tự fallback về CPU nếu không có WebGPU
+    },
+    outputFaceBlendshapes: false,    // Không cần, tiết kiệm compute
+    outputFacialTransformationMatrixes: true,   // Cần cho head pose
+    runningMode: 'VIDEO',
+    numFaces: 1,
+  });
+}
 ```
-[1]─────────[2]─────────[3]─────────[4]
- │                                   │
-[5]─────────[6]─────────[7]─────────[8]
- │                                   │
-[9]────────[10]────────[11]────────[12]
+
+### 2.2 — Feature Extractor (7 features)
+
+```typescript
+// apps/web/lib/gaze/feature-extractor.ts
+
+export interface GazeFeatures {
+  // Normalized iris position trong eye socket [-1, 1]
+  irisXLeft:  number;
+  irisYLeft:  number;
+  irisXRight: number;
+  irisYRight: number;
+
+  // Head pose từ facial transformation matrix (degrees)
+  headPitch: number;   // Ngửa/cúi đầu
+  headYaw:   number;   // Quay trái/phải
+  headRoll:  number;   // Nghiêng đầu
+
+  // Metadata (không dùng để train, dùng để filter)
+  earLeft:  number;
+  earRight: number;
+  faceDetected: boolean;
+}
+
+export function extractFeatures(
+  result: FaceLandmarkerResult,
+  videoWidth: number,
+  videoHeight: number
+): GazeFeatures | null {
+  if (!result.faceLandmarks?.length) {
+    return null;
+  }
+
+  const lm = result.faceLandmarks[0];
+  const matrix = result.facialTransformationMatrixes?.[0]?.data;
+
+  // Iris normalization
+  // Công thức: (iris_x - eye_inner_x) / (eye_outer_x - eye_inner_x)
+  // Range output: [0, 1] với 0.5 = nhìn thẳng
+  const irisXLeft = normalizeIris(
+    lm[LANDMARKS.IRIS_LEFT_CENTER].x,
+    lm[LANDMARKS.EYE_LEFT_INNER].x,
+    lm[LANDMARKS.EYE_LEFT_OUTER].x
+  );
+
+  const irisYLeft = normalizeIris(
+    lm[LANDMARKS.IRIS_LEFT_CENTER].y,
+    lm[LANDMARKS.EYE_LEFT_TOP_1].y,
+    lm[LANDMARKS.EYE_LEFT_BOT_1].y
+  );
+
+  // Tương tự cho mắt phải (lưu ý flip x vì đối xứng)
+  const irisXRight = 1 - normalizeIris(
+    lm[LANDMARKS.IRIS_RIGHT_CENTER].x,
+    lm[LANDMARKS.EYE_RIGHT_INNER].x,
+    lm[LANDMARKS.EYE_RIGHT_OUTER].x
+  );
+
+  const irisYRight = normalizeIris(
+    lm[LANDMARKS.IRIS_RIGHT_CENTER].y,
+    lm[LANDMARKS.EYE_RIGHT_TOP_1].y,
+    lm[LANDMARKS.EYE_RIGHT_BOT_1].y
+  );
+
+  // Head pose từ 4x4 transformation matrix
+  // matrix layout: [r00,r01,r02,t0, r10,r11,r12,t1, r20,r21,r22,t2, 0,0,0,1]
+  const { pitch, yaw, roll } = matrix
+    ? extractEulerAngles(matrix)
+    : { pitch: 0, yaw: 0, roll: 0 };
+
+  // EAR cho blink detection
+  const earLeft  = computeEAR(lm, 'left');
+  const earRight = computeEAR(lm, 'right');
+
+  return {
+    irisXLeft, irisYLeft, irisXRight, irisYRight,
+    headPitch: pitch, headYaw: yaw, headRoll: roll,
+    earLeft, earRight, faceDetected: true
+  };
+}
+
+function normalizeIris(irisPos: number, edgeA: number, edgeB: number): number {
+  const range = Math.abs(edgeB - edgeA);
+  if (range < 0.001) return 0.5;
+  return Math.max(0, Math.min(1, (irisPos - Math.min(edgeA, edgeB)) / range));
+}
+
+function extractEulerAngles(m: Float32Array): { pitch: number; yaw: number; roll: number } {
+  // Decompose rotation matrix → Euler angles (XYZ convention)
+  const pitch = Math.atan2(-m[9], m[10]) * (180 / Math.PI);
+  const yaw   = Math.atan2(m[8], Math.sqrt(m[9]**2 + m[10]**2)) * (180 / Math.PI);
+  const roll  = Math.atan2(-m[4], m[0]) * (180 / Math.PI);
+  return { pitch, yaw, roll };
+}
+
+function computeEAR(lm: NormalizedLandmark[], eye: 'left' | 'right'): number {
+  const idx = eye === 'left'
+    ? [LANDMARKS.EYE_LEFT_OUTER, LANDMARKS.EYE_LEFT_TOP_1, LANDMARKS.EYE_LEFT_TOP_2,
+       LANDMARKS.EYE_LEFT_INNER, LANDMARKS.EYE_LEFT_BOT_1, LANDMARKS.EYE_LEFT_BOT_2]
+    : [LANDMARKS.EYE_RIGHT_OUTER, LANDMARKS.EYE_RIGHT_TOP_1, LANDMARKS.EYE_RIGHT_TOP_2,
+       LANDMARKS.EYE_RIGHT_INNER, LANDMARKS.EYE_RIGHT_BOT_1, LANDMARKS.EYE_RIGHT_BOT_2];
+
+  const dist = (a: number, b: number) => Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y);
+  return (dist(idx[1], idx[5]) + dist(idx[2], idx[4])) / (2 * dist(idx[0], idx[3]));
+}
 ```
 
-Ưu tiên 4×3 thay vì 3×3 vì:
+### 2.3 — EAR Adaptive Threshold
 
-- Thêm điểm ở rìa màn hình giúp Polynomial Regression extrapolate chính xác hơn
-- Phủ được 4 góc màn hình tốt hơn
+```typescript
+// apps/web/lib/gaze/ear-detector.ts
+// Adaptive: tự điều chỉnh threshold sau 2 giây đầu (baseline calibration)
 
-**Quy trình từng điểm:**
+export class AdaptiveEARDetector {
+  private baselineEAR = 0.28;     // Sẽ được cập nhật
+  private readonly RATIO = 0.75;  // threshold = baseline × 0.75
+  private history: number[] = [];
+  private readonly WINDOW = 90;   // 3 giây ở 30fps
 
-1. Hiện target điểm (vòng tròn đỏ + crosshair)
-2. Chờ **1.2 giây** (người dùng di chuyển mắt đến điểm)
-3. Hiện countdown nhỏ (0.5s) để báo sắp thu
-4. Thu **20 frame liên tiếp** (~0.67s ở 30fps)
-5. Lấy **median** của 20 frame cho (yaw, pitch)
-6. Chuyển điểm tiếp theo
+  update(earLeft: number, earRight: number): 'none' | 'short' | 'long' {
+    const ear = (earLeft + earRight) / 2;
 
-**Lặp lại toàn bộ grid 3 lần** → 36 sample pairs → gộp lại để fit model
-
-### 3.3 — Lưu calibration data
-
-```json
-// calibration/calibration_data.json
-{
-  "screen_resolution": [1920, 1080],
-  "camera_distance_cm": 60,
-  "timestamp": "2024-01-15T10:30:00",
-  "samples": [
-    {
-      "screen_x": 240,
-      "screen_y": 180,
-      "gaze_yaw": -28.4,
-      "gaze_pitch": -12.1,
-      "n_frames": 20
+    // Cập nhật baseline từ giá trị mắt mở (EAR cao)
+    if (ear > this.baselineEAR * 0.9) {
+      this.history.push(ear);
+      if (this.history.length > this.WINDOW) this.history.shift();
+      this.baselineEAR = Math.max(...this.history.slice(-30));
     }
-  ]
+
+    const threshold = this.baselineEAR * this.RATIO;
+    return this.classifyBlink(ear, threshold);
+  }
+
+  get currentThreshold(): number {
+    return this.baselineEAR * this.RATIO;
+  }
 }
 ```
 
-Lưu raw data riêng để có thể **re-fit** model mà không cần calibrate lại.
+### 2.4 — Kiểm tra Phase 2
+
+```bash
+# Test trong browser DevTools Console
+# Sau khi mount component:
+
+# 1. FPS check — mở Performance tab, record 10s
+# Mục tiêu: MediaPipe step() < 16ms mỗi frame
+
+# 2. Feature sanity check
+# Nhìn góc trái màn hình → irisXLeft và irisXRight phải < 0.4
+# Nhìn góc phải màn hình → irisXLeft và irisXRight phải > 0.6
+# Cúi đầu → headPitch tăng
+# Nhìn thẳng → headYaw ≈ 0
+
+# 3. EAR check
+# Mắt mở bình thường: EAR ≈ 0.25-0.35
+# Chớp mắt: EAR xuống < 0.15
+# Nhắm hoàn toàn: EAR < 0.05
+```
+
+**Checklist Phase 2:**
+- [ ] MediaPipe khởi tạo < 3 giây (lần đầu download model)
+- [ ] `extractFeatures()` chạy < 2ms (không tính MediaPipe step)
+- [ ] irisXLeft/Right thay đổi rõ ràng khi nhìn trái/phải
+- [ ] headYaw thay đổi ≥ 15° khi quay đầu 45°
+- [ ] EAR < 0.21 khi chớp mắt chủ động
+- [ ] Toàn bộ pipeline ≥ 30fps trên Chrome + WebGPU
 
 ---
 
-## Phase 4 — Calibration Mapper
+## Phase 3 — Calibration System (Polynomial Regression)
 
-### 4.1 — Fit Polynomial Regression
-
-**Lý do dùng Polynomial bậc 2:**
-
-- Bậc 1 (linear) không đủ vì mắt nhìn theo đường cong, không thẳng
-- Bậc 3 dễ bị overfit với ít data điểm
-- Bậc 2 là điểm cân bằng tốt nhất với 36 sample points
-
-**Pipeline:**
+### 3.1 — Thiết kế Calibration UI
 
 ```
-(yaw, pitch) → PolynomialFeatures(degree=2) → [1, y, p, y², yp, p²] → Ridge Regression → (screen_x, screen_y)
+Grid 4×3 (12 điểm) — hiện tuần tự theo pattern Z:
+
+ [1]──────[2]──────[3]──────[4]
+  │                            │
+ [5]──────[6]──────[7]──────[8]
+  │                            │
+ [9]─────[10]─────[11]─────[12]
+
+Margin: 10% từ mỗi cạnh màn hình
+→ Điểm (1): x=192, y=108 (với 1920×1080)
+→ Điểm (12): x=1728, y=972
 ```
 
-Fit **hai model riêng biệt**: một cho `screen_x`, một cho `screen_y`
+```typescript
+// apps/web/lib/gaze/calibration.ts
 
-**Tại sao dùng Ridge thay vì Linear?**
+export interface CalibrationSample {
+  features: number[];    // [irisXL, irisYL, irisXR, irisYR, pitch, yaw, roll]
+  screenX: number;
+  screenY: number;
+  timestamp: number;
+}
 
-- Ridge thêm L2 regularization, giúp tránh overfitting ở các điểm rìa màn hình
-- Tham số `alpha=1.0` là mặc định ổn, có thể tune sau
+export class CalibrationSession {
+  private samples: CalibrationSample[] = [];
+  private readonly SAMPLES_PER_POINT = 25;   // 25 frame × ~33ms ≈ 0.8s thu data
+  private readonly STABLE_WAIT_MS    = 1200; // Chờ mắt ổn định
 
-### 4.2 — Validate Calibration Model
+  async collectPoint(
+    targetX: number,
+    targetY: number,
+    featureStream: AsyncIterable<GazeFeatures>
+  ): Promise<void> {
+    // Chờ STABLE_WAIT_MS trước khi bắt đầu thu
+    await sleep(this.STABLE_WAIT_MS);
 
-Sau khi fit, đánh giá trên **held-out set** (để lại 4 điểm không train):
+    const buffer: number[][] = [];
+    for await (const features of featureStream) {
+      // Bỏ qua frame nếu đang chớp mắt
+      if (features.earLeft < 0.18 || features.earRight < 0.18) continue;
 
-| Metric      | Công thức          | Tiêu chí đạt       |
-| ----------- | ------------------ | ------------------ | --- | ---------------------------- |
-| MAE (pixel) | `mean(             | predicted - actual | )`  | < 80px (≈ 4% chiều rộng FHD) |
-| Max Error   | `max(              | predicted - actual | )`  | < 150px                      |
-| R² score    | sklearn `r2_score` | > 0.92             |
+      buffer.push(this.featuresToVector(features));
+      if (buffer.length >= this.SAMPLES_PER_POINT) break;
+    }
 
-**Nếu không đạt:**
+    // Dùng median của 25 frame để loại noise
+    const medianFeatures = vectorMedian(buffer);
+    this.samples.push({
+      features: medianFeatures,
+      screenX: targetX,
+      screenY: targetY,
+      timestamp: Date.now()
+    });
+  }
 
-- Kiểm tra lại điều kiện ánh sáng khi thu data
-- Thu thêm 2 lần nữa (tổng 5 lần thay vì 3)
-- Xem xét tăng polynomial degree lên 3 nếu R² < 0.85
+  private featuresToVector(f: GazeFeatures): number[] {
+    return [f.irisXLeft, f.irisYLeft, f.irisXRight, f.irisYRight,
+            f.headPitch, f.headYaw, f.headRoll];
+  }
 
-### 4.3 — Lưu và load model
-
-- Dùng `joblib.dump()` để serialize calibrator
-- Load lại khi mở app, không cần calibrate mỗi lần
-- Thêm **timestamp** vào file để biết khi nào cần recalibrate (khuyến nghị: 1 tuần hoặc khi đổi vị trí camera)
-
----
-
-## Phase 5 — Gaze Smoother
-
-### 5.1 — Exponential Moving Average (EMA)
-
-```
-smoothed[t] = α × raw[t] + (1-α) × smoothed[t-1]
-```
-
-- `α = 0.25`: cursor mượt nhưng có ~2-3 frame lag
-- `α = 0.4`: cursor responsive hơn, hơi rung
-- Bắt đầu với `α = 0.25`, điều chỉnh theo cảm nhận thực tế
-
-### 5.2 — Outlier Rejection
-
-**Lý do cần:** L2CS-Net đôi khi cho output sai lệch lớn 1 frame khi ánh sáng thay đổi đột ngột hoặc bị che khuất.
-
-**Cơ chế:**
-
-1. Giữ rolling window 7 frame gần nhất
-2. Tính median của window → `median_x, median_y`
-3. Nếu điểm mới lệch > threshold (250px ngang, 180px dọc) so với median → **bỏ qua frame này**
-4. Dùng giá trị EMA trước đó thay thế
-
-### 5.3 — Dead Zone
-
-**Lý do cần:** Cursor không nên rung khi người dùng đang nhìn cố định vào một điểm.
-
-**Cơ chế:**
-
-- Nếu `|new_x - current_x| < 8px` AND `|new_y - current_y| < 8px` → **không di chuyển cursor**
-- Dead zone phù hợp với foveal vision (~2° góc nhìn)
-
-### 5.4 — Đánh giá Smoother
-
-Dùng bài test **target tracking:**
-
-1. Hiện một điểm di chuyển chậm theo đường thẳng ngang
-2. Người dùng nhìn theo điểm đó
-3. Ghi lại trajectory của cursor
-
-| Metric                                  | Tiêu chí đạt                |
-| --------------------------------------- | --------------------------- |
-| Jitter (độ lệch chuẩn khi nhìn cố định) | < 15px                      |
-| Lag (khoảng cách giữa target và cursor) | < 80px ở tốc độ bình thường |
-| Outlier slip-through                    | < 1 lần / phút              |
-
----
-
-## Phase 6 — Tích hợp và Main Loop
-
-### 6.1 — Thread Architecture
-
-**Không chạy tất cả trong 1 thread** — sẽ bị bottleneck:
-
-```
-Thread 1 (Camera Thread):
-  - Capture frame từ webcam
-  - Đưa vào shared Queue (maxsize=2, drop frame cũ nếu full)
-
-Thread 2 (Processing Thread):
-  - Lấy frame từ Queue
-  - Chạy MediaPipe (EAR)
-  - Chạy L2CS-Net (yaw, pitch)
-  - Chạy Calibration Mapper
-  - Chạy Smoother
-  - Cập nhật shared state
-
-Thread 3 (Mouse Control Thread — 60Hz):
-  - Đọc shared state
-  - Gọi pyautogui.moveTo()
-  - Xử lý blink click với cooldown
-```
-
-**Lý do:** L2CS-Net inference ~20-30ms, pyautogui call ~1-2ms — tách thread giúp mouse vẫn update đều đặn ngay cả khi inference chậm.
-
-### 6.2 — State Management
-
-```python
-# Shared state (dùng threading.Lock để thread-safe)
-shared_state = {
-    "cursor_x": 960,
-    "cursor_y": 540,
-    "blink_state": "none",   # "none" | "short" | "long"
-    "face_detected": True,
-    "fps": 0.0
+  getSamples(): CalibrationSample[] { return this.samples; }
 }
 ```
 
-### 6.3 — Fallback khi không detect được mặt
+### 3.2 — Polynomial Regression (Pure JS, không cần TF.js)
 
-- Nếu MediaPipe/L2CS không detect face trong **10 frame liên tiếp** → dừng di chuyển cursor
-- Hiện indicator nhỏ ở góc màn hình (màu đỏ = mất tracking)
-- Cursor **giữ nguyên vị trí** thay vì nhảy về góc
+```typescript
+// apps/web/lib/gaze/polynomial.ts
+// Implement bằng tay để không phụ thuộc TF.js cho task đơn giản này
 
-### 6.4 — Overlay Debug UI
+export class PolynomialGazeMapper {
+  private coeffsX: number[] = [];
+  private coeffsY: number[] = [];
+  private readonly DEGREE = 2;
 
-Trong quá trình phát triển, hiện overlay bằng OpenCV:
+  // Expand features thành polynomial terms bậc 2
+  // Input 7 features → 36 terms (1 + 7 + 28 cross terms)
+  // Nhưng chỉ dùng iris (4 features) để giữ đơn giản hơn
+  // → expand 4 features bậc 2 → 15 terms
+  private expand(f: number[]): number[] {
+    const [x1, y1, x2, y2, p, y, r] = f;
+    return [
+      1,                                    // bias
+      x1, y1, x2, y2, p, y, r,            // linear terms
+      x1*x1, y1*y1, x2*x2, y2*y2,         // quadratic
+      p*p, y*y,
+      x1*y1, x2*y2,                         // cross terms iris
+      x1*y, x2*y,                           // iris × head yaw
+      y1*p, y2*p,                           // iris × head pitch
+    ];
+  }
 
-- EAR value real-time (trái/phải)
-- Yaw, Pitch values
-- Mapped screen coordinates (trước và sau smoothing)
-- FPS counter
-- Blink state indicator
+  fit(samples: CalibrationSample[]): { maeX: number; maeY: number; r2X: number; r2Y: number } {
+    const X = samples.map(s => this.expand(s.features));
+    const yX = samples.map(s => s.screenX);
+    const yY = samples.map(s => s.screenY);
+
+    // Least squares với Ridge regularization (λ=0.01)
+    this.coeffsX = ridgeRegression(X, yX, 0.01);
+    this.coeffsY = ridgeRegression(X, yY, 0.01);
+
+    // Tính metrics
+    const predX = samples.map(s => this.predict(s.features)[0]);
+    const predY = samples.map(s => this.predict(s.features)[1]);
+
+    return {
+      maeX: mae(predX, yX),
+      maeY: mae(predY, yY),
+      r2X:  r2score(predX, yX),
+      r2Y:  r2score(predY, yY),
+    };
+  }
+
+  predict(features: number[]): [number, number] {
+    const x = this.expand(features);
+    return [dot(this.coeffsX, x), dot(this.coeffsY, x)];
+  }
+
+  serialize(): { coeffsX: number[]; coeffsY: number[] } {
+    return { coeffsX: this.coeffsX, coeffsY: this.coeffsY };
+  }
+
+  load(data: { coeffsX: number[]; coeffsY: number[] }): void {
+    this.coeffsX = data.coeffsX;
+    this.coeffsY = data.coeffsY;
+  }
+}
+
+// Giải hệ phương trình bình phương tối thiểu: θ = (XᵀX + λI)⁻¹Xᵀy
+function ridgeRegression(X: number[][], y: number[], lambda: number): number[] {
+  // Implement Gaussian elimination hoặc dùng numeric.js
+  // ... (implementation)
+}
+```
+
+### 3.3 — Calibration flow hoàn chỉnh
+
+```
+Bước 1: Hiện điểm [1] → Animate điểm (pulse) để thu hút mắt
+Bước 2: Progress bar chạy (STABLE_WAIT_MS = 1.2s)
+Bước 3: Flash xanh lá → bắt đầu thu 25 frames
+Bước 4: Điểm ✓ → chuyển điểm [2]
+...
+Bước cuối: Hiện kết quả metrics
+         ├── MAE < 80px: "Calibration tốt ✓" → Cho dùng
+         ├── MAE 80-120px: "Calibration trung bình" → Đề xuất làm lại
+         └── MAE > 120px: "Calibration kém" → Bắt làm lại
+```
+
+### 3.4 — Lưu offline bằng IndexedDB
+
+```typescript
+// Lưu vào IndexedDB để dùng khi không đăng nhập
+import { openDB } from 'idb';
+
+const db = await openDB('gaze-store', 1, {
+  upgrade(db) {
+    db.createObjectStore('calibration');
+  }
+});
+
+await db.put('calibration', {
+  polyCoeffs: mapper.serialize(),
+  earThreshold: detector.currentThreshold,
+  savedAt: Date.now()
+}, 'current');
+```
+
+**Checklist Phase 3:**
+- [ ] 12 điểm thu xong trong < 30 giây
+- [ ] Không có frame blink lọt vào calibration data
+- [ ] MAE in-sample < 50px (nếu > 50px → kiểm tra feature extractor)
+- [ ] R² > 0.90 cho cả X và Y
+- [ ] Coefficients lưu/load từ IndexedDB đúng
 
 ---
 
-## Phase 7 — Đánh giá Toàn Hệ Thống
+## Phase 4 — MLP Personalization Model (TF.js)
 
-### 7.1 — Accuracy Test (Độ chính xác)
-
-**Phương pháp — Fitts' Law Grid Test:**
-
-1. Hiện 12 target điểm tuần tự (cùng grid calibration)
-2. Người dùng nhìn vào từng điểm, giữ 2s
-3. Ghi lại vị trí cursor tại thời điểm đó
-4. Tính offset so với target thực
+### 4.1 — Kiến trúc MLP
 
 ```
-Chạy test này TRƯỚC và SAU khi calibrate để so sánh
+Input layer:   7 nodes  (iris × 4 + head pose × 3)
+Hidden layer1: 32 nodes (ReLU) + Dropout(0.1)
+Hidden layer2: 16 nodes (ReLU)
+Output layer:  2 nodes  (screen_x, screen_y — normalized [0,1])
+                         → scale lại bằng screen resolution
+
+Tổng parameters: 7×32 + 32 + 32×16 + 16 + 16×2 + 2 = 802 params
+Model size sau serialize: ~12-20KB
 ```
 
-| Metric                    | Công thức                         | Mục tiêu |
-| ------------------------- | --------------------------------- | -------- |
-| Mean Absolute Error (MAE) | `mean(sqrt((cx-tx)² + (cy-ty)²))` | < 80px   |
-| 90th percentile error     | `np.percentile(errors, 90)`       | < 150px  |
-| Corner accuracy           | MAE riêng cho 4 góc màn hình      | < 120px  |
-| Center accuracy           | MAE riêng cho điểm trung tâm      | < 50px   |
+```typescript
+// apps/web/lib/gaze/mlp-model.ts
+import * as tf from '@tensorflow/tfjs';
 
-**Ghi kết quả vào file để track cải thiện theo thời gian.**
+export class GazeMLPModel {
+  private model: tf.LayersModel | null = null;
 
-### 7.2 — Latency Test (Độ trễ)
+  build(): void {
+    this.model = tf.sequential({
+      layers: [
+        tf.layers.dense({
+          inputShape: [7],
+          units: 32,
+          activation: 'relu',
+          kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }),
+          name: 'hidden1'
+        }),
+        tf.layers.dropout({ rate: 0.1 }),
+        tf.layers.dense({
+          units: 16,
+          activation: 'relu',
+          name: 'hidden2'
+        }),
+        tf.layers.dense({
+          units: 2,
+          activation: 'sigmoid',  // Output [0,1] → scale sau
+          name: 'output'
+        }),
+      ]
+    });
 
-**Phương pháp:**
+    this.model.compile({
+      optimizer: tf.train.adam(0.005),
+      loss: 'meanSquaredError',
+      metrics: ['mae'],
+    });
+  }
 
-1. Hiện target đột ngột ở vị trí mới
-2. Người dùng nhìn nhanh vào target
-3. Đo thời gian từ khi target hiện đến khi cursor đến gần target (< 50px)
+  async train(
+    samples: CalibrationSample[],
+    screenWidth: number,
+    screenHeight: number,
+    onProgress?: (epoch: number, mae: number) => void
+  ): Promise<{ finalMae: number; epochs: number }> {
+    const xs = tf.tensor2d(samples.map(s => s.features));
+    const ys = tf.tensor2d(samples.map(s => [
+      s.screenX / screenWidth,
+      s.screenY / screenHeight
+    ]));
 
-| Metric             | Mục tiêu | Ghi chú             |
-| ------------------ | -------- | ------------------- |
-| End-to-end latency | < 200ms  | Cảm giác responsive |
-| Camera capture lag | < 33ms   | 1 frame ở 30fps     |
-| Inference time     | < 30ms   | L2CS-Net trên 3050  |
-| Smoothing lag      | < 100ms  | Phụ thuộc alpha     |
+    let finalMae = Infinity;
+    let epochCount = 0;
 
-### 7.3 — Usability Test (Khả năng dùng được)
+    await this.model!.fit(xs, ys, {
+      epochs: 150,
+      batchSize: Math.min(32, Math.floor(samples.length / 2)),
+      validationSplit: 0.15,
+      shuffle: true,
+      callbacks: {
+        onEpochEnd: (epoch, logs) => {
+          epochCount = epoch + 1;
+          finalMae = (logs?.val_mae ?? logs?.mae ?? 0)
+                     * Math.max(screenWidth, screenHeight); // pixels
+          onProgress?.(epoch, finalMae);
 
-**Bài test thực tế — Thực hiện mỗi bài 5 lần:**
+          // Early stopping thủ công
+          if (finalMae < 40) return tf.nextFrame().then(() => this.model!.stopTraining = true);
+        }
+      }
+    });
 
-| Bài test                     | Cách thực hiện         | Tiêu chí đạt                           |
-| ---------------------------- | ---------------------- | -------------------------------------- |
-| Click vào nút lớn (200×50px) | Nhìn vào nút, chớp mắt | ≥ 4/5 thành công                       |
-| Click vào icon (48×48px)     | Nhìn vào icon taskbar  | ≥ 3/5 thành công                       |
-| Scroll (nếu đã implement)    | Nhắm mắt phải lâu      | ≥ 4/5 trigger đúng                     |
-| Độ bền 5 phút                | Dùng liên tục 5 phút   | Không mỏi mắt quá mức, < 5 false click |
+    xs.dispose();
+    ys.dispose();
+
+    return { finalMae, epochs: epochCount };
+  }
+
+  predict(features: number[], screenWidth: number, screenHeight: number): [number, number] {
+    const input = tf.tensor2d([features]);
+    const output = this.model!.predict(input) as tf.Tensor;
+    const [normX, normY] = Array.from(output.dataSync());
+    input.dispose();
+    output.dispose();
+    return [normX * screenWidth, normY * screenHeight];
+  }
+
+  // Serialize để lưu lên PostgreSQL
+  async serialize(): Promise<{ json: string; weights: ArrayBuffer }> {
+    const artifacts = await tf.io.withSaveHandler(async (a) => a)(this.model!);
+    return {
+      json:    JSON.stringify(artifacts.modelTopology),
+      weights: artifacts.weightData as ArrayBuffer,
+    };
+  }
+
+  async load(json: string, weights: ArrayBuffer): Promise<void> {
+    this.model = await tf.loadLayersModel(tf.io.fromMemory(
+      JSON.parse(json), 
+      [{ name: 'dense', data: new Float32Array(weights) }]
+    ));
+  }
+}
+```
+
+### 4.2 — Training flow trong browser
+
+```
+Yêu cầu train MLP:
+├── Tối thiểu: 50 calibration points (5 vòng × 12 điểm = 60 points) ✓
+├── Khuyến nghị: 80-100 points (7-8 vòng)
+└── Tối đa có ích: 150 points (overfit sau đó)
+
+Training time ước tính (150 epochs):
+├── WebGPU backend: ~3-5 giây
+└── WASM backend:   ~8-15 giây
+
+Hiện progress bar với MAE real-time trong lúc train
+```
+
+### 4.3 — Kiểm tra MLP
+
+```typescript
+// evaluation/test-mlp.ts
+// Chạy trong browser DevTools
+
+async function testMLPAccuracy(model: GazeMLPModel, testSamples: CalibrationSample[]) {
+  const errors = testSamples.map(s => {
+    const [px, py] = model.predict(s.features, 1920, 1080);
+    return Math.hypot(px - s.screenX, py - s.screenY);
+  });
+
+  console.table({
+    'MAE (px)':            mean(errors).toFixed(1),
+    'Median Error (px)':   median(errors).toFixed(1),
+    'P90 Error (px)':      percentile(errors, 90).toFixed(1),
+    'Max Error (px)':      Math.max(...errors).toFixed(1),
+    '% samples < 80px':    (errors.filter(e => e < 80).length / errors.length * 100).toFixed(0) + '%',
+  });
+}
+```
+
+**Checklist Phase 4:**
+- [ ] Build model không lỗi, summary đúng (802 params)
+- [ ] Training 150 epochs < 10 giây trên WebGPU
+- [ ] val_mae < 60px sau training với 60+ samples
+- [ ] Serialize → Deserialize → predict cho cùng kết quả (diff < 0.001px)
+- [ ] tf.memory() sau dispose: không có tensor leak
+
+---
+
+## Phase 5 — Gaze Smoother & Mouse Controller
+
+### 5.1 — Smoother
+
+```typescript
+// apps/web/lib/gaze/smoother.ts
+
+export class GazeSmoother {
+  private prevX: number | null = null;
+  private prevY: number | null = null;
+  private readonly history: [number, number][] = [];
+  private readonly WINDOW = 7;
+
+  constructor(
+    private alpha      = 0.25,   // EMA weight
+    private deadZone   = 8,      // px — không di chuyển nếu delta nhỏ hơn
+    private outlierThX = 250,    // px — reject nếu jump lớn hơn
+    private outlierThY = 180,
+  ) {}
+
+  update(rawX: number, rawY: number): { x: number; y: number; moved: boolean } {
+    // Outlier rejection
+    if (this.history.length >= 3) {
+      const mX = median(this.history.map(h => h[0]));
+      const mY = median(this.history.map(h => h[1]));
+      if (Math.abs(rawX - mX) > this.outlierThX || Math.abs(rawY - mY) > this.outlierThY) {
+        return { x: this.prevX ?? rawX, y: this.prevY ?? rawY, moved: false };
+      }
+    }
+
+    // Update history
+    this.history.push([rawX, rawY]);
+    if (this.history.length > this.WINDOW) this.history.shift();
+
+    // EMA
+    const smoothX = this.prevX === null ? rawX : this.alpha * rawX + (1 - this.alpha) * this.prevX;
+    const smoothY = this.prevY === null ? rawY : this.alpha * rawY + (1 - this.alpha) * this.prevY;
+
+    // Dead zone
+    const dx = Math.abs(smoothX - (this.prevX ?? smoothX));
+    const dy = Math.abs(smoothY - (this.prevY ?? smoothY));
+    const moved = dx > this.deadZone || dy > this.deadZone;
+
+    this.prevX = smoothX;
+    this.prevY = smoothY;
+    return { x: smoothX, y: smoothY, moved };
+  }
+}
+```
+
+### 5.2 — Mouse Control (Web API)
+
+```typescript
+// apps/web/lib/gaze/mouse-controller.ts
+// Browser không có native mouse control API
+// → Dùng một trong hai approach:
+
+// Approach 1: Overlay cursor (visual only, không control OS cursor)
+// Vẽ custom cursor element theo dõi gaze
+// Phù hợp nếu app là full-screen web app
+
+// Approach 2: Electron bridge (nếu muốn control OS cursor)
+// Gọi ipcRenderer → main process → robotjs/nut-js
+
+// Approach 3: WebHID / companion native app (production)
+
+// Implementation Approach 1 (MVP):
+export class WebCursorController {
+  private cursorEl: HTMLElement;
+
+  constructor() {
+    this.cursorEl = document.createElement('div');
+    this.cursorEl.id = 'gaze-cursor';
+    this.cursorEl.style.cssText = `
+      position: fixed; width: 20px; height: 20px;
+      border-radius: 50%; background: rgba(255,100,100,0.7);
+      pointer-events: none; z-index: 99999;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.1s;
+    `;
+    document.body.appendChild(this.cursorEl);
+  }
+
+  moveTo(x: number, y: number): void {
+    this.cursorEl.style.left = `${x}px`;
+    this.cursorEl.style.top  = `${y}px`;
+  }
+}
+```
+
+> **Lưu ý:** Nếu mục tiêu là control OS mouse cursor (không chỉ trong browser), cần Electron hoặc native companion app. Đây là quyết định kiến trúc cần xác định sớm.
+
+**Checklist Phase 5:**
+- [ ] Jitter < 15px khi nhìn cố định 5 giây
+- [ ] Cursor không nhảy khi chớp mắt tự nhiên
+- [ ] Dead zone hoạt động (cursor không rung khi đứng yên)
+- [ ] Outlier rejection: không có cursor jump đột ngột
+
+---
+
+## Phase 6 — Web Worker & Pipeline Integration
+
+### 6.1 — Tách processing sang Worker
+
+```typescript
+// apps/web/workers/gaze.worker.ts
+// MediaPipe KHÔNG thể chạy trong Worker vì cần DOM
+// → Chỉ tách phần heavy compute sang Worker
+
+import { expose } from 'comlink';
+
+const gazeWorker = {
+  async runPolynomial(features: number[], coeffsX: number[], coeffsY: number[]) {
+    // Polynomial expansion + dot product trong Worker
+  },
+  async runMLP(features: number[], modelWeights: ArrayBuffer) {
+    // TF.js CÓ THỂ chạy trong Worker
+    const tf = await import('@tensorflow/tfjs');
+    // ...
+  }
+};
+
+expose(gazeWorker);
+```
+
+### 6.2 — Main pipeline (chạy ở Main thread)
+
+```typescript
+// apps/web/components/gaze/GazeProvider.tsx
+// Animation loop sử dụng requestAnimationFrame
+
+export function GazeProvider({ children }: { children: React.ReactNode }) {
+  const rafRef = useRef<number>();
+
+  const loop = useCallback(async (timestamp: number) => {
+    if (!videoRef.current || !landmarker.current) return;
+
+    // 1. MediaPipe detect (main thread — cần DOM access)
+    const result = landmarker.current.detectForVideo(videoRef.current, timestamp);
+
+    // 2. Feature extraction (sync, < 0.5ms)
+    const features = extractFeatures(result, videoWidth, videoHeight);
+    if (!features) {
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
+
+    // 3. Blink detection
+    const blinkState = earDetector.update(features.earLeft, features.earRight);
+    if (blinkState !== 'none') handleClick(blinkState);
+
+    // 4. Gaze prediction (skip nếu đang blink)
+    if (blinkState === 'none') {
+      const [rawX, rawY] = activeModel === 'mlp'
+        ? mlpModel.predict(features, screenW, screenH)
+        : polyMapper.predict([features.irisXLeft, features.irisYLeft,
+                              features.irisXRight, features.irisYRight,
+                              features.headPitch, features.headYaw, features.headRoll]);
+
+      // 5. Smooth
+      const { x, y, moved } = smoother.update(rawX, rawY);
+      if (moved) cursorController.moveTo(x, y);
+    }
+
+    rafRef.current = requestAnimationFrame(loop);
+  }, [...deps]);
+
+  useEffect(() => {
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current!);
+  }, [loop]);
+}
+```
+
+### 6.3 — Debug Overlay
+
+```typescript
+// Hiện trong development mode
+// Toggle bằng Ctrl+Shift+D
+
+interface DebugStats {
+  fps:              number;
+  inferenceMs:      number;   // Thời gian predict()
+  mediapipeMs:      number;   // Thời gian detectForVideo()
+  rawGaze:          [number, number];
+  smoothedGaze:     [number, number];
+  earLeft:          number;
+  earRight:         number;
+  earThreshold:     number;
+  headPose:         { pitch: number; yaw: number; roll: number };
+  activeModel:      'polynomial' | 'mlp';
+  calibrationMAE:   number;
+}
+```
+
+**Checklist Phase 6:**
+- [ ] Pipeline end-to-end chạy ≥ 30fps (đo bằng debug overlay)
+- [ ] Không memory leak sau 10 phút (check `tf.memory().numTensors` ổn định)
+- [ ] Cursor di chuyển mượt khi nhìn từ từ qua màn hình
+- [ ] Blink click hoạt động, không false positive > 2 lần/phút
+
+---
+
+## Phase 7 — Evaluation & Benchmarking
+
+### 7.1 — Accuracy Test (Quantitative)
+
+```typescript
+// evaluation/accuracy-test.ts
+// Chạy script này sau khi calibration xong
+
+const EVAL_POINTS = [
+  // 9 điểm trung tâm và rìa (khác với 12 điểm calibration)
+  { x: 960,  y: 540  },  // center
+  { x: 480,  y: 270  },  // top-left quadrant
+  { x: 1440, y: 270  },  // top-right quadrant
+  { x: 480,  y: 810  },  // bottom-left quadrant
+  { x: 1440, y: 810  },  // bottom-right quadrant
+  { x: 960,  y: 270  },  // top center
+  { x: 960,  y: 810  },  // bottom center
+  { x: 480,  y: 540  },  // left center
+  { x: 1440, y: 540  },  // right center
+];
+
+// Quy trình: Hiện điểm → chờ 2s → thu 30 frame → lấy median → tính error
+// Chạy 3 lần, lấy trung bình
+```
+
+**Bảng kết quả mục tiêu:**
+
+| Metric | Polynomial (Quick) | MLP (Personalized) | Đánh giá |
+|--------|-------------------|-------------------|----------|
+| MAE tổng (px) | < 80 | < 60 | ✅ Pass |
+| MAE vùng trung tâm (px) | < 50 | < 40 | ✅ Pass |
+| MAE vùng rìa (px) | < 120 | < 90 | ✅ Pass |
+| P90 Error (px) | < 150 | < 110 | ✅ Pass |
+| R² score | > 0.88 | > 0.93 | ✅ Pass |
+| % samples < 80px | > 70% | > 85% | ✅ Pass |
+
+### 7.2 — Latency Test (Quantitative)
+
+```typescript
+// evaluation/latency-test.ts
+// Đo từng component riêng lẻ
+
+performance.mark('mediapipe-start');
+const result = landmarker.detectForVideo(video, timestamp);
+performance.mark('mediapipe-end');
+performance.measure('mediapipe', 'mediapipe-start', 'mediapipe-end');
+
+// Target latency breakdown:
+const LATENCY_BUDGET = {
+  camera_capture:  33,   // ms (1 frame @ 30fps) — không thay đổi được
+  mediapipe:       15,   // ms target
+  feature_extract:  1,   // ms target
+  prediction:       5,   // ms target (poly: <1ms, MLP: ~3ms)
+  smoothing:        1,   // ms target
+  dom_update:       2,   // ms target
+  total:           57,   // ms = ~17fps worst case
+                         // Nhưng pipeline = async, actual ≈ 100-150ms
+};
+```
+
+**Bảng latency mục tiêu:**
+
+| Component | Mục tiêu | Đo được | Pass? |
+|-----------|----------|---------|-------|
+| MediaPipe detectForVideo | < 15ms | | |
+| Feature extraction | < 1ms | | |
+| Polynomial predict | < 1ms | | |
+| MLP predict | < 5ms | | |
+| Gaze smoother | < 1ms | | |
+| End-to-end (camera→cursor) | < 150ms | | |
+| FPS tổng thể | ≥ 30fps | | |
+
+### 7.3 — Usability Test (Qualitative)
+
+**Bài test Fitts' Law — 5 lần mỗi bài:**
+
+| Bài test | Mô tả | Tiêu chí đạt |
+|----------|-------|--------------|
+| Click nút lớn | Nút 200×60px ở trung tâm màn hình | ≥ 4/5 |
+| Click icon | Target 48×48px | ≥ 3/5 |
+| Navigate menu | Click vào 5 menu items lần lượt | ≥ 4/5 liên tiếp |
+| Vùng rìa | Click nút ở 4 góc màn hình | ≥ 3/5 mỗi góc |
+| Bền vững 5 phút | Sử dụng liên tục | < 3 false click/phút |
 
 ### 7.4 — Performance Benchmarks
 
-| Resource     | Cách đo                    | Mục tiêu          |
-| ------------ | -------------------------- | ----------------- |
-| FPS xử lý    | FPS counter trong overlay  | ≥ 25fps           |
-| GPU VRAM     | `nvidia-smi` lúc chạy      | < 2.8GB           |
-| CPU usage    | `htop`                     | < 40% single core |
-| RAM          | `htop`                     | < 500MB           |
-| Startup time | Thời gian từ run đến ready | < 5 giây          |
+```bash
+# Đo trong Chrome DevTools → Performance tab
+
+# Mục tiêu:
+# Scripting time: < 8ms/frame
+# Rendering time: < 2ms/frame
+# GPU memory: < 500MB (bao gồm WebGPU)
+# JS Heap: < 100MB (stable, không tăng dần)
+
+# Kiểm tra memory leak:
+# Chạy 10 phút → js heap snapshot trước và sau
+# numTensors phải ổn định (không tăng liên tục)
+```
+
+### 7.5 — Script tổng hợp kết quả
+
+```typescript
+// evaluation/run-all.ts
+async function runFullEvaluation() {
+  const results = {
+    timestamp: new Date().toISOString(),
+    browserInfo: navigator.userAgent,
+    webgpuEnabled: await checkWebGPU(),
+    screenResolution: `${screen.width}×${screen.height}`,
+
+    accuracy: {
+      polynomial: await runAccuracyTest('polynomial'),
+      mlp:        await runAccuracyTest('mlp'),
+    },
+    latency: await runLatencyTest(),
+    performance: await runPerformanceTest(),
+  };
+
+  // Lưu vào file JSON
+  const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `eval-${Date.now()}.json`; a.click();
+}
+```
 
 ---
 
-## Phase 8 — Tối ưu và Cải thiện
+## Phase 8 — Polish & Production Readiness
 
-### 8.1 — Nếu accuracy kém (MAE > 80px)
+### 8.1 — Error handling cần cover
 
-1. **Kiểm tra điều kiện ánh sáng** — đây là nguyên nhân phổ biến nhất
-2. **Thu lại calibration data** với nhiều lần hơn (5 lần thay vì 3)
-3. **Thêm điểm calibration** — thử grid 4×4 (16 điểm)
-4. **Kiểm tra vị trí camera** — phải thẳng, không nghiêng
+```typescript
+// Các lỗi cần handle gracefully:
+const ERROR_CASES = [
+  'camera_not_found',          // Không tìm thấy webcam
+  'camera_permission_denied',  // User từ chối camera
+  'webgpu_not_supported',      // Browser cũ → fallback WASM
+  'face_not_detected',         // Mặt bị che hoặc ngoài frame
+  'calibration_insufficient',  // Ít hơn 10 điểm calibration
+  'mlp_inference_failed',      // TF.js error → fallback polynomial
+  'backend_unavailable',       // NestJS offline → dùng IndexedDB
+];
+```
 
-### 8.2 — Nếu cursor rung nhiều
+### 8.2 — Fallback chain
 
-1. Giảm `ema_alpha` xuống 0.15
-2. Tăng `dead_zone_px` lên 12-15px
-3. Tăng `outlier_threshold` để bộ lọc aggressive hơn
+```
+WebGPU backend
+    ↓ (nếu không hỗ trợ)
+WASM backend
+    ↓ (nếu không hỗ trợ)
+CPU backend (chậm, warning user)
 
-### 8.3 — Nếu latency cao (> 200ms)
+MLP Model
+    ↓ (nếu chưa đủ data hoặc lỗi)
+Polynomial Regression
+    ↓ (nếu chưa calibrate)
+Thông báo yêu cầu calibration
+```
 
-1. Kiểm tra camera FPS thực tế: `cap.get(cv2.CAP_PROP_FPS)`
-2. Giảm resolution input của L2CS-Net
-3. Đảm bảo camera thread và processing thread thực sự song song
-4. Profile bằng `cProfile` để tìm điểm nghẽn
+### 8.3 — Environment variables
 
-### 8.4 — Recalibration Strategy
+```bash
+# apps/web/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_MEDIAPIPE_CDN=https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm
+NEXT_PUBLIC_ENABLE_DEBUG=true
 
-**Khi nào cần recalibrate:**
+# apps/api/.env
+DATABASE_URL=postgresql://gaze:gaze_dev_pass@localhost:5432/gaze_dev
+JWT_SECRET=your-secret-key-min-32-chars
+JWT_EXPIRES_IN=7d
+```
 
-- Thay đổi vị trí ngồi hoặc camera
-- Sau 1 tuần sử dụng (mỏi mắt ảnh hưởng EAR threshold)
-- Khi thấy cursor liên tục lệch về một phía
+### 8.4 — Build & Run commands
 
-**Quick recalibration (5 điểm):**
+```bash
+# Development
+pnpm turbo dev          # Chạy cả web + api
 
-- Implement tùy chọn calibrate nhanh chỉ 5 điểm (4 góc + trung tâm)
-- Fit lại mapper với 5 điểm mới, giữ nguyên các điểm cũ với weight thấp hơn
+# Chạy riêng lẻ
+cd apps/web && pnpm dev   # Port 3000
+cd apps/api && pnpm dev   # Port 3001
+
+# Build production
+pnpm turbo build
+
+# Test evaluation (chạy trong browser sau khi app đang chạy)
+# Mở http://localhost:3000/evaluation
+
+# Database commands
+cd apps/api
+pnpm typeorm migration:generate src/migrations/NewMigration -d src/data-source.ts
+pnpm typeorm migration:run -d src/data-source.ts
+pnpm typeorm migration:revert -d src/data-source.ts
+```
 
 ---
 
-## Checklist Hoàn Thành
+## Checklist tổng kết
 
-### Phase 0 — Môi trường
+### Phase 0 — Setup
+- [ ] pnpm workspace hoạt động
+- [ ] WebGPU detected trên Chrome
+- [ ] PostgreSQL up và connected
 
-- [x] Cài đặt đủ dependencies, không conflict version
-- [x] CUDA hoạt động, inference demo pass
-- [x] Cấu trúc thư mục tạo xong
+### Phase 1 — API & DB
+- [ ] Migration thành công
+- [ ] Auth JWT hoạt động
+- [ ] Weights lưu/load không corrupt
 
-### Phase 1 — Blink Detection
+### Phase 2 — MediaPipe
+- [ ] ≥ 30fps pipeline
+- [ ] 7 features extract đúng
+- [ ] EAR adaptive hoạt động
 
-- [x] EAR tính đúng với MediaPipe landmark index
-- [x] Phân biệt short/long blink đúng
-- [x] Cooldown hoạt động, không double-click
-- [ ] Pass tất cả test cases ở 1.3
+### Phase 3 — Calibration
+- [ ] 12-point grid UI hoạt động
+- [ ] R² > 0.90 sau calibration
+- [ ] MAE in-sample < 50px
 
-### Phase 2 — Gaze Estimation
-
-- [x] L2CS-Net inference < 33ms
-- [x] VRAM < 2.5GB
-- [x] Xử lý được trường hợp không detect face
-
-### Phase 3–4 — Calibration
-
-- [x] Thu đủ data (3 lần × 12 điểm)
-- [ ] MAE validation < 80px
-- [ ] R² > 0.92
-- [ ] Lưu/load model hoạt động
+### Phase 4 — MLP
+- [ ] Training < 10 giây
+- [ ] val_mae < 60px
+- [ ] Serialize/deserialize đúng
 
 ### Phase 5 — Smoother
+- [ ] Jitter < 15px
+- [ ] Dead zone hoạt động
 
-- [ ] Jitter < 15px khi nhìn cố định
-- [ ] Lag chấp nhận được ở tốc độ di chuyển mắt bình thường
-- [ ] Dead zone hoạt động đúng
-
-### Phase 6 — Tích hợp
-
-- [ ] 3-thread architecture hoạt động ổn định
-- [ ] Không crash sau 10 phút chạy liên tục
-- [ ] Fallback khi mất face detection
+### Phase 6 — Integration
+- [ ] ≥ 30fps end-to-end
+- [ ] Không memory leak
+- [ ] Blink click < 2 false positive/phút
 
 ### Phase 7 — Evaluation
-
-- [ ] Accuracy Test: MAE < 80px
-- [ ] Latency: < 200ms end-to-end
+- [ ] Poly MAE < 80px
+- [ ] MLP MAE < 60px
+- [ ] End-to-end latency < 150ms
 - [ ] Usability: Click nút lớn ≥ 4/5
-- [ ] Performance: ≥ 25fps, < 2.8GB VRAM
 
 ---
 
 ## Bảng theo dõi tiến độ
 
-| Phase                    | Ngày bắt đầu | Ngày kết thúc | Trạng thái | Ghi chú                                                           |
-| ------------------------ | ------------ | ------------- | ---------- | ----------------------------------------------------------------- |
-| 0 — Môi trường           |              |               | ✅         | Hoàn tất cài requirements và tải l2cs weights                     |
-| 1 — Blink Detection      |              |               | ✅         | Code ở `src/blink_detector.py` và `facial_video_landmark.py`      |
-| 2 — Gaze Estimation      |              |               | ✅         | Code tại `src/gaze_estimator.py`                                  |
-| 3 — Thu Calibration Data |              |               | ✅         | Code tại `src/calibration.py` và `calibration/DATA_COLLECTION.md` |
-| 4 — Calibration Mapper   |              |               | ⬜         |                                                                   |
-| 5 — Smoother             |              |               | ⬜         |                                                                   |
-| 6 — Tích hợp             |              |               | ⬜         |                                                                   |
-| 7 — Evaluation           |              |               | ⬜         |                                                                   |
-| 8 — Tối ưu               |              |               | ⬜         |                                                                   |
+| Phase | Tên | Ngày bắt đầu | Ngày hoàn thành | Status |
+|-------|-----|-------------|----------------|--------|
+| 0 | Project Setup | | | ⬜ |
+| 1 | API & Database | | | ⬜ |
+| 2 | MediaPipe + Features | | | ⬜ |
+| 3 | Calibration (Polynomial) | | | ⬜ |
+| 4 | MLP Personalization | | | ⬜ |
+| 5 | Smoother & Mouse | | | ⬜ |
+| 6 | Pipeline Integration | | | ⬜ |
+| 7 | Evaluation | | | ⬜ |
+| 8 | Polish & Production | | | ⬜ |
 
 ---
 
-## Web Migration Checklist (Next.js + NestJS, 2026)
-
-### Milestone A — Core Runtime trên trình duyệt
-
-- [ ] Chạy camera stream ổn định 30-60 FPS (MediaPipe JS + WebGPU backend).
-- [ ] Port EAR + blink FSM 1:1 từ bản Python.
-- [ ] Lock ngưỡng blink theo profile người dùng (adaptive threshold là tùy chọn nâng cao).
-
-**Điều kiện pass Milestone A:**
-
-- [ ] Tương đương kết quả TC-1..TC-5 của bản Python trong điều kiện ánh sáng tương đương.
-
-### Milestone B — Gaze Mapping usable
-
-- [ ] Fit Polynomial Regression bậc 2 từ dữ liệu calibration.
-- [ ] Suy luận tọa độ màn hình realtime từ (yaw, pitch).
-- [ ] Áp dụng smoothing (EMA + outlier + dead zone).
-
-**Điều kiện pass Milestone B:**
-
-- [ ] MAE < 100px trên bộ điểm kiểm tra.
-- [ ] Jitter < 20px khi nhìn cố định 10 giây.
-
-### Milestone C — Backend và vòng đời model
-
-- [ ] API NestJS cho profile, calibration sessions, model metadata.
-- [ ] PostgreSQL schema có version cho calibration/model artifacts.
-- [ ] Cơ chế tải lại calibration/model theo user, không bắt calibrate lại mỗi lần đăng nhập.
-
-**Điều kiện pass Milestone C:**
-
-- [ ] Đăng xuất/đăng nhập lại vẫn giữ chính xác mapping trong sai số mục tiêu.
-
-### Milestone D — Morse Engine (tùy chọn theo scope sản phẩm)
-
-- [ ] Đặc tả rõ grammar blink sequence (dot/dash/separator/timeout).
-- [ ] FSM parser và bộ test chuỗi chuẩn.
-
-**Điều kiện pass Milestone D:**
-
-- [ ] Tỉ lệ decode đúng >= 95% trên tập câu lệnh kiểm thử.
-
----
-
-## Release Readiness Checklist (MVP Web)
-
-### A. Readiness về ngưỡng và tài liệu
-
-- [ ] Không còn lệch số threshold giữa code chạy thực tế và tài liệu test.
-- [ ] Có mục ghi rõ nguồn sự thật hiện tại (runtime hoặc config) cho từng phase.
-
-### B. Readiness về chức năng cốt lõi
-
-- [ ] Blink detection pass TC-1..TC-5 trong ít nhất 2 lần chạy độc lập.
-- [ ] Calibration mapper chạy đủ vòng: collect -> fit -> infer -> persist -> reload.
-- [ ] Smoother giảm jitter nhưng không vượt ngưỡng latency mục tiêu.
-
-### C. Readiness về vận hành
-
-- [ ] Có fallback khi mất tracking (freeze cursor + recover an toàn).
-- [ ] Có định nghĩa schema/version cho calibration và model artifacts.
-- [ ] Có checklist rollback khi mô hình cá nhân hóa gây giảm chất lượng.
-
----
-
-_Tài liệu này dành cho Giải pháp A (L2CS-Net + Calibration Layer). Sau khi hoàn thành, có thể chuyển sang Giải pháp B (Fine-tune) bằng cách dùng data thu được ở Phase 3 làm điểm khởi đầu._
+*Tài liệu này cho Giải pháp Web (MediaPipe JS + TF.js). Xem `gaze_mouse_plan_solution_a.md` cho bản Python desktop.*

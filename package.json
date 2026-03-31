@@ -1,0 +1,15 @@
+{
+  "name": "gaze-web",
+  "version": "1.0.0",
+  "description": "Eye Gaze Mouse Control",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint"
+  },
+  "devDependencies": {
+    "turbo": "2.4.4"
+  },
+  "packageManager": "pnpm@10.18.2"
+}

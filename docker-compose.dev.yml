@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:17.4-alpine
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: gaze_dev
+      POSTGRES_USER: gaze
+      POSTGRES_PASSWORD: gaze_dev_pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
