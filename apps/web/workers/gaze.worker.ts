@@ -1,4 +1,5 @@
 import { expose } from 'comlink';
+import type { GazeFeatures } from '../lib/gaze/types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let tf: typeof import('@tensorflow/tfjs') | null = null;
@@ -9,7 +10,6 @@ const gazeWorker = {
   async initTF() {
     if (!tf) {
       tf = await import('@tensorflow/tfjs');
-      // Cố gắng sử dụng WebGPU nếu có thể
       try {
         await import('@tensorflow/tfjs-backend-webgpu');
         await tf.setBackend('webgpu');
@@ -20,16 +20,16 @@ const gazeWorker = {
     }
   },
 
-  async runPolynomial(features: number[], coeffsX: number[], coeffsY: number[]): Promise<[number, number]> {
-    // Tự tính polynomial prediction
-    const [x1, y1, x2, y2, p, y, r] = features;
+  async runPolynomial(features: GazeFeatures, coeffsX: number[], coeffsY: number[]): Promise<[number, number]> {
+    const { irisXLeft, irisYLeft, irisXRight, irisYRight, headPitch, headYaw, headRoll } = features;
     const expanded = [
-      1, x1, y1, x2, y2, p, y, r,
-      x1*x1, y1*y1, x2*x2, y2*y2,
-      p*p, y*y,
-      x1*y1, x2*y2,
-      x1*y, x2*y,
-      y1*p, y2*p,
+      1, 
+      irisXLeft, irisYLeft, irisXRight, irisYRight, headPitch, headYaw, headRoll,
+      irisXLeft * irisXLeft, irisYLeft * irisYLeft, irisXRight * irisXRight, irisYRight * irisYRight,
+      headPitch * headPitch, headYaw * headYaw,
+      irisXLeft * irisYLeft, irisXRight * irisYRight,
+      irisXLeft * headYaw, irisXRight * headYaw,
+      irisYLeft * headPitch, irisYRight * headPitch,
     ];
 
     const dot = (a: number[], b: number[]) => a.reduce((sum, val, i) => sum + val * b[i], 0);
@@ -40,7 +40,6 @@ const gazeWorker = {
     if (!tf) await this.initTF();
 
     const parsed = JSON.parse(json);
-    // Re-create the layers model
     mlpModelInstance = await tf!.loadLayersModel(tf!.io.fromMemory({
       modelTopology: parsed.modelTopology,
       weightSpecs: parsed.weightSpecs,
@@ -48,13 +47,15 @@ const gazeWorker = {
     }));
   },
 
-  async runMLP(features: number[], screenWidth: number, screenHeight: number): Promise<[number, number]> {
+  async runMLP(features: GazeFeatures, screenWidth: number, screenHeight: number): Promise<[number, number]> {
     if (!tf || !mlpModelInstance) {
       throw new Error('MLP Model not loaded in worker');
     }
 
-    const input = tf.tensor2d([features]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { irisXLeft, irisYLeft, irisXRight, irisYRight, headPitch, headYaw, headRoll } = features;
+    const inputFeatures = [irisXLeft, irisYLeft, irisXRight, irisYRight, headPitch, headYaw, headRoll];
+
+    const input = tf.tensor2d([inputFeatures]);
     const output = mlpModelInstance.predict(input) as any;
     const [normX, normY] = Array.from(output.dataSync()) as [number, number];
     

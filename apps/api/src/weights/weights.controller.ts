@@ -1,4 +1,12 @@
-import { Controller, Get, Put, Delete, Body, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Put,
+  Delete,
+  Body,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { WeightsService } from './weights.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 

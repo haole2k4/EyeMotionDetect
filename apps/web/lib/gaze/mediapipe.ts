@@ -20,11 +20,18 @@ export const LANDMARKS = {
 } as const;
 
 export async function createFaceLandmarker(): Promise<FaceLandmarker> {
+  // Lọc console.error do MediaPipe cố log trạng thái WebAssembly nội bộ (gây tràn Overlay trong Next.js)
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    if (typeof args[0] === 'string' && args[0].includes('XNNPACK')) return;
+    originalConsoleError(...args);
+  };
+
   const filesetResolver = await FilesetResolver.forVisionTasks(
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
   );
 
-  return FaceLandmarker.createFromOptions(filesetResolver, {
+  const landmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
     baseOptions: {
       modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
       delegate: 'GPU',
@@ -32,6 +39,9 @@ export async function createFaceLandmarker(): Promise<FaceLandmarker> {
     outputFaceBlendshapes: false,
     outputFacialTransformationMatrixes: true,
     runningMode: 'VIDEO',
-    numFaces: 1,
+    // Keep >1 so runtime can lock control whenever multiple faces appear.
+    numFaces: 2,
   });
+
+  return landmarker;
 }

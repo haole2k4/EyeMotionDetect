@@ -13,18 +13,18 @@ export class AuthService {
   async register(email: string, pass: string) {
     const salt = await bcrypt.genSalt();
     const passwordHash = await bcrypt.hash(pass, salt);
-    
+
     const user = await this.usersService.create({
       email,
       passwordHash,
     });
-    
+
     return this.login(user);
   }
 
   async validateUser(email: string, pass: string): Promise<any> {
     const user = await this.usersService.findByEmail(email);
-    if (user && await bcrypt.compare(pass, user.passwordHash)) {
+    if (user && (await bcrypt.compare(pass, user.passwordHash))) {
       const { passwordHash, ...result } = user;
       return result;
     }
@@ -35,7 +35,7 @@ export class AuthService {
     const payload = { email: user.email, sub: user.id };
     return {
       access_token: this.jwtService.sign(payload),
-      user: { id: user.id, email: user.email }
+      user: { id: user.id, email: user.email },
     };
   }
 }

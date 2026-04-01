@@ -1,103 +1,173 @@
-import Image from "next/image";
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useGaze } from "../components/gaze/GazeProvider";
+import { getCalibrationLocally } from "../lib/gaze/storage";
+
+function toPolyline(points: [number, number][]): string {
+  return points.map(([x, y]) => `${(x * 100).toFixed(2)},${(y * 100).toFixed(2)}`).join(" ");
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { stats, startPipeline, stopPipeline, setModel } = useGaze();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const [status, setStatus] = useState("Chua bat dau");
+  const [activeMode, setActiveMode] = useState<"fallback" | "polynomial" | "mlp">("fallback");
+
+  useEffect(() => {
+    const loadSavedModel = async () => {
+      const stored = await getCalibrationLocally();
+      if (!stored) {
+        setActiveMode("fallback");
+        return;
+      }
+
+      if (stored.activeModel === "polynomial" && stored.polyCoeffs) {
+        await setModel("polynomial", stored.polyCoeffs);
+        setActiveMode("polynomial");
+        return;
+      }
+
+      if (stored.activeModel === "mlp" && stored.mlpModel) {
+        await setModel("mlp", stored.mlpModel);
+        setActiveMode("mlp");
+        return;
+      }
+
+      setActiveMode("fallback");
+    };
+
+    void loadSavedModel();
+  }, [setModel]);
+
+  const startCamera = useCallback(async () => {
+    if (!videoRef.current) return;
+
+    try {
+      setStatus("Dang xin quyen camera...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user",
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+
+      startPipeline(videoRef.current);
+      setStatus("Dang chay eye tracking");
+    } catch {
+      setStatus("Khong mo duoc camera. Hay cap quyen webcam cho localhost:3000");
+    }
+  }, [startPipeline]);
+
+  const stopCamera = useCallback(() => {
+    stopPipeline();
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) {
+        track.stop();
+      }
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setStatus("Da dung");
+  }, [stopPipeline]);
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, [stopCamera]);
+
+  return (
+    <main className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-10">
+      <section className="mx-auto max-w-4xl space-y-6">
+        <h1 className="text-3xl md:text-4xl font-semibold">EyeMotionDetect Phase 6</h1>
+        <p className="text-neutral-300">
+          Mode hien tai: <strong>{activeMode}</strong>. Bam Start de bat camera va dieu khien con tro gaze.
+        </p>
+        <p className="text-sm text-neutral-400">Trang thai: {status}</p>
+
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={() => void startCamera()}
+            className="px-4 py-2 rounded-md bg-emerald-500 text-black font-medium hover:bg-emerald-400"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Start Eye Control
+          </button>
+          <button
+            onClick={stopCamera}
+            className="px-4 py-2 rounded-md bg-neutral-800 border border-neutral-700 hover:bg-neutral-700"
           >
-            Read our docs
-          </a>
+            Stop
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+
+        <div className="w-full max-w-md space-y-2">
+          <div className="relative">
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full rounded-xl border border-neutral-800 bg-black"
+            />
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {stats?.eyeOverlay && (
+                <>
+                  <polyline
+                    points={toPolyline(stats.eyeOverlay.leftEye)}
+                    fill="none"
+                    stroke="#38bdf8"
+                    strokeWidth="0.65"
+                    strokeLinejoin="round"
+                  />
+                  <polyline
+                    points={toPolyline(stats.eyeOverlay.rightEye)}
+                    fill="none"
+                    stroke="#38bdf8"
+                    strokeWidth="0.65"
+                    strokeLinejoin="round"
+                  />
+                  <polyline
+                    points={toPolyline(stats.eyeOverlay.leftIris)}
+                    fill="none"
+                    stroke="#22d3ee"
+                    strokeWidth="0.6"
+                  />
+                  <polyline
+                    points={toPolyline(stats.eyeOverlay.rightIris)}
+                    fill="none"
+                    stroke="#22d3ee"
+                    strokeWidth="0.6"
+                  />
+                </>
+              )}
+            </svg>
+          </div>
+          <p className={`text-sm ${stats?.singleFaceReady === false ? "text-amber-300" : "text-emerald-300"}`}>
+            {stats?.singleFaceReady === false
+              ? `Chi chap nhan dung 1 khuon mat (hien tai: ${stats.faceCount}). Da tam khoa dieu khien chuot.`
+              : "Dang khoa 1 khuon mat. Eye contour da duoc bat."}
+          </p>
+        </div>
+
+        <p className="text-sm text-neutral-500">
+          Goi Debug Overlay bang phim Ctrl+Shift+D.
+        </p>
+      </section>
+    </main>
   );
 }

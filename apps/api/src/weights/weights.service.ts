@@ -12,7 +12,9 @@ export class WeightsService {
   ) {}
 
   async getWeights(userId: string) {
-    let weights = await this.weightsRepo.findOne({ where: { user: { id: userId } } });
+    let weights = await this.weightsRepo.findOne({
+      where: { user: { id: userId } },
+    });
     if (!weights) {
       weights = this.weightsRepo.create({ user: { id: userId } as User });
       await this.weightsRepo.save(weights);
@@ -30,7 +32,7 @@ export class WeightsService {
   async updateMlp(userId: string, data: any) {
     const weights = await this.getWeights(userId);
     weights.mlpWeightsJson = data.mlpWeightsJson;
-    weights.mlpWeightsBin = data.mlpWeightsBin; 
+    weights.mlpWeightsBin = data.mlpWeightsBin;
     return this.weightsRepo.save(weights);
   }
 
