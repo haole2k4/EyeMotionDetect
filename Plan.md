@@ -294,7 +294,7 @@ GET    /api/auth/me
 
 GET    /api/weights          → Load weights cho user hiện tại
 PUT    /api/weights/poly     → Lưu Polynomial coefficients
-PUT    /api/weights/mlp      → Lưu MLP weights (multipart/form-data)
+PUT    /api/weights/mlp      → Lưu MLP weights (JSON body: mlpWeightsJson + mlpWeightsBin)
 DELETE /api/weights          → Reset, xóa toàn bộ weights
 ```
 
@@ -895,11 +895,11 @@ async function testMLPAccuracy(model: GazeMLPModel, testSamples: CalibrationSamp
 ```
 
 **Checklist Phase 4:**
-- [ ] Build model không lỗi, summary đúng (802 params)
-- [ ] Training 150 epochs < 10 giây trên WebGPU
-- [ ] val_mae < 60px sau training với 60+ samples
-- [ ] Serialize → Deserialize → predict cho cùng kết quả (diff < 0.001px)
-- [ ] tf.memory() sau dispose: không có tensor leak
+- [x] Build model không lỗi, summary đúng (802 params)
+- [x] Training 150 epochs < 10 giây trên WebGPU
+- [x] val_mae < 60px sau training với 60+ samples
+- [x] Serialize → Deserialize → predict cho cùng kết quả (diff < 0.001px)
+- [x] tf.memory() sau dispose: không có tensor leak
 
 ---
 
@@ -996,10 +996,10 @@ export class WebCursorController {
 > **Lưu ý:** Nếu mục tiêu là control OS mouse cursor (không chỉ trong browser), cần Electron hoặc native companion app. Đây là quyết định kiến trúc cần xác định sớm.
 
 **Checklist Phase 5:**
-- [ ] Jitter < 15px khi nhìn cố định 5 giây
-- [ ] Cursor không nhảy khi chớp mắt tự nhiên
-- [ ] Dead zone hoạt động (cursor không rung khi đứng yên)
-- [ ] Outlier rejection: không có cursor jump đột ngột
+- [x] Jitter < 15px khi nhìn cố định 5 giây
+- [x] Cursor không nhảy khi chớp mắt tự nhiên
+- [x] Dead zone hoạt động (cursor không rung khi đứng yên)
+- [x] Outlier rejection: không có cursor jump đột ngột
 
 ---
 
@@ -1310,33 +1310,33 @@ pnpm typeorm migration:revert -d src/data-source.ts
 ## Checklist tổng kết
 
 ### Phase 0 — Setup
-- [ ] pnpm workspace hoạt động
-- [ ] WebGPU detected trên Chrome
-- [ ] PostgreSQL up và connected
+- [x] pnpm workspace hoạt động
+- [x] WebGPU detected trên Chrome
+- [x] PostgreSQL up và connected
 
 ### Phase 1 — API & DB
-- [ ] Migration thành công
-- [ ] Auth JWT hoạt động
-- [ ] Weights lưu/load không corrupt
+- [x] Migration thành công
+- [x] Auth JWT hoạt động
+- [x] Weights lưu/load không corrupt
 
 ### Phase 2 — MediaPipe
-- [ ] ≥ 30fps pipeline
-- [ ] 7 features extract đúng
-- [ ] EAR adaptive hoạt động
+- [x] ≥ 30fps pipeline
+- [x] 7 features extract đúng
+- [x] EAR adaptive hoạt động
 
 ### Phase 3 — Calibration
-- [ ] 12-point grid UI hoạt động
-- [ ] R² > 0.90 sau calibration
-- [ ] MAE in-sample < 50px
+- [x] 12-point grid UI hoạt động
+- [x] R² > 0.90 sau calibration
+- [x] MAE in-sample < 50px
 
 ### Phase 4 — MLP
-- [ ] Training < 10 giây
-- [ ] val_mae < 60px
-- [ ] Serialize/deserialize đúng
+- [x] Training < 10 giây
+- [x] val_mae < 60px
+- [x] Serialize/deserialize đúng
 
 ### Phase 5 — Smoother
-- [ ] Jitter < 15px
-- [ ] Dead zone hoạt động
+- [x] Jitter < 15px
+- [x] Dead zone hoạt động
 
 ### Phase 6 — Integration
 - [ ] ≥ 30fps end-to-end
@@ -1355,12 +1355,12 @@ pnpm typeorm migration:revert -d src/data-source.ts
 
 | Phase | Tên | Ngày bắt đầu | Ngày hoàn thành | Status |
 |-------|-----|-------------|----------------|--------|
-| 0 | Project Setup | | | ⬜ |
-| 1 | API & Database | | | ⬜ |
-| 2 | MediaPipe + Features | | | ⬜ |
-| 3 | Calibration (Polynomial) | | | ⬜ |
-| 4 | MLP Personalization | | | ⬜ |
-| 5 | Smoother & Mouse | | | ⬜ |
+| 0 | Project Setup | 2026-03-31 | 2026-03-31 | ✅ |
+| 1 | API & Database | 2026-03-31 | 2026-03-31 | ✅ |
+| 2 | MediaPipe + Features | 2026-03-31 | 2026-03-31 | ✅ |
+| 3 | Calibration (Polynomial) | 2026-03-31 | 2026-03-31 | ✅ |
+| 4 | MLP Personalization | 2026-04-02 | 2026-04-02 | ✅ |
+| 5 | Smoother & Mouse | 2026-04-02 | 2026-04-02 | ✅ |
 | 6 | Pipeline Integration | | | ⬜ |
 | 7 | Evaluation | | | ⬜ |
 | 8 | Polish & Production | | | ⬜ |

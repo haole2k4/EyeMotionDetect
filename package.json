@@ -5,11 +5,15 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
+    "dev": "cross-env NODE_OPTIONS=--no-experimental-webstorage turbo dev",
     "lint": "turbo lint"
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "turbo": "2.4.4"
   },
-  "packageManager": "pnpm@10.18.2"
+  "packageManager": "pnpm@10.18.2",
+  "dependencies": {
+    "@tensorflow/tfjs": "4.22.0"
+  }
 }
