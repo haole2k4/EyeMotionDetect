@@ -22,7 +22,7 @@ export class GazeMLPModel {
         }),
         tf.layers.dense({
           units: 2,
-          activation: 'sigmoid',  // Output [0,1] -> scale sau
+          activation: 'linear',
           name: 'output'
         }),
       ]
@@ -63,7 +63,7 @@ export class GazeMLPModel {
         onEpochEnd: async (epoch, logs) => {
           epochCount = epoch + 1;
           finalMae = (logs?.val_mae ?? logs?.mae ?? 0)
-                     * Math.max(screenWidth, screenHeight); // tính theo pixels
+            * Math.max(screenWidth, screenHeight); // tính theo pixels
 
           if (onProgress) {
             onProgress(epoch, finalMae);
@@ -88,15 +88,16 @@ export class GazeMLPModel {
     if (!this.model) {
       throw new Error('Model not built or loaded');
     }
-    
+
     const input = tf.tensor2d([features]);
     const output = this.model.predict(input) as tf.Tensor;
     const [normX, normY] = Array.from(output.dataSync()) as [number, number];
-    
+
     input.dispose();
     output.dispose();
-    
-    return [normX * screenWidth, normY * screenHeight];
+
+    const clamp = (value: number) => Math.max(0, Math.min(1, value));
+    return [clamp(normX) * screenWidth, clamp(normY) * screenHeight];
   }
 
   // Serialize để lưu lên PostgreSQL
@@ -104,7 +105,7 @@ export class GazeMLPModel {
     if (!this.model) {
       throw new Error('Model not built yet');
     }
-    
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let savedArtifacts: any = null;
     await this.model.save(tf.io.withSaveHandler(async (artifacts: tf.io.ModelArtifacts) => {

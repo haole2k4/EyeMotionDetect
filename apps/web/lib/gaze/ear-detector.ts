@@ -4,7 +4,7 @@ export type BlinkAction = 'none' | 'left_click' | 'right_click' | 'drag_toggle';
 
 export class AdaptiveEARDetector {
   private baselineEAR = 0.28;
-  private readonly RATIO = 0.75;
+  private readonly RATIO = 0.6;
   private history: number[] = [];
   private readonly WINDOW = 90;
 
@@ -14,10 +14,11 @@ export class AdaptiveEARDetector {
   private lastActionTime = 0;
 
   // Hằng số tính theo ms
-  private readonly CLICK_MIN = 200;
+  private readonly CLICK_MIN = 80;
   private readonly CLICK_MAX = 500;
-  private readonly DRAG_MIN = 500;
-  private readonly COOLDOWN_MS = 600;
+  private readonly DRAG_MIN = 600;
+  private readonly COOLDOWN_MS = 700;
+  private readonly BOTH_EYE_SYNC_WINDOW = 80;
 
   update(earLeft: number, earRight: number, timestamp: number): BlinkAction {
     const ear = (earLeft + earRight) / 2;
@@ -34,41 +35,51 @@ export class AdaptiveEARDetector {
 
     let action: BlinkAction = 'none';
 
-    // Xử lý góc trái
+    // Track thời điểm bắt đầu nhắm từng mắt
     if (isLeftClosed && this.leftClosedSince === null) {
       this.leftClosedSince = timestamp;
     }
-    if (!isLeftClosed && this.leftClosedSince !== null) {
-      const durationLeft = timestamp - this.leftClosedSince;
-      this.leftClosedSince = null;
-      // Nháy mắt trái đơn độc (mắt phải không nhắm)
-      if (durationLeft >= this.CLICK_MIN && durationLeft <= this.CLICK_MAX && this.rightClosedSince === null) {
-        action = 'left_click';
-      }
-    }
-
-    // Xử lý góc phải
     if (isRightClosed && this.rightClosedSince === null) {
       this.rightClosedSince = timestamp;
     }
-    if (!isRightClosed && this.rightClosedSince !== null) {
-      const durationRight = timestamp - this.rightClosedSince;
-      this.rightClosedSince = null;
-      // Nháy mắt phải đơn độc (mắt trái không nhắm)
-      if (durationRight >= this.CLICK_MIN && durationRight <= this.CLICK_MAX && this.leftClosedSince === null) {
-        action = 'right_click';
-      }
-    }
 
-    // Nhắm liên tục cả 2 mắt để kéo thả
-    if (isLeftClosed && isRightClosed && this.leftClosedSince !== null && this.rightClosedSince !== null) {
-      const bothDuration = Math.min(timestamp - this.leftClosedSince, timestamp - this.rightClosedSince);
-      if (bothDuration >= this.DRAG_MIN) {
+    // Ưu tiên drag nếu cả 2 mắt nhắm đồng bộ
+    if (
+      isLeftClosed &&
+      isRightClosed &&
+      this.leftClosedSince !== null &&
+      this.rightClosedSince !== null
+    ) {
+      const timeDiff = Math.abs(this.leftClosedSince - this.rightClosedSince);
+      const bothDuration = timestamp - Math.max(this.leftClosedSince, this.rightClosedSince);
+
+      if (timeDiff <= this.BOTH_EYE_SYNC_WINDOW && bothDuration >= this.DRAG_MIN) {
         action = 'drag_toggle';
-        // Xóa dấu vết để không kích hoạt nhiều lần lúc vẫn đang nhắm
         this.leftClosedSince = null;
         this.rightClosedSince = null;
       }
+    }
+
+    // Chỉ xét click trái khi mắt phải đang mở
+    if (!isLeftClosed && this.leftClosedSince !== null) {
+      const durationLeft = timestamp - this.leftClosedSince;
+      const wasRightOpen = this.rightClosedSince === null;
+
+      if (wasRightOpen && durationLeft >= this.CLICK_MIN && durationLeft <= this.CLICK_MAX) {
+        action = 'left_click';
+      }
+      this.leftClosedSince = null;
+    }
+
+    // Chỉ xét click phải khi mắt trái đang mở
+    if (!isRightClosed && this.rightClosedSince !== null) {
+      const durationRight = timestamp - this.rightClosedSince;
+      const wasLeftOpen = this.leftClosedSince === null;
+
+      if (wasLeftOpen && durationRight >= this.CLICK_MIN && durationRight <= this.CLICK_MAX) {
+        action = 'right_click';
+      }
+      this.rightClosedSince = null;
     }
 
     // Cooldown logic

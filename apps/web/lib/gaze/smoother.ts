@@ -14,11 +14,11 @@ export class GazeSmoother {
   private readonly WINDOW = 7;
 
   constructor(
-    private alpha      = 0.25,   // EMA weight
-    private deadZone   = 8,      // px — không di chuyển nếu delta nhỏ hơn
+    private alpha = 0.08,   // EMA weight
+    private deadZone = 5,      // px — không di chuyển nếu delta nhỏ hơn
     private outlierThX = 250,    // px — reject nếu jump lớn hơn
     private outlierThY = 180,
-  ) {}
+  ) { }
 
   update(rawX: number, rawY: number): { x: number; y: number; moved: boolean } {
     // Outlier rejection

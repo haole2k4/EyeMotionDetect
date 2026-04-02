@@ -1,14 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import * as Comlink from 'comlink';
-import type { GazeWorker } from '../../workers/gaze.worker';
-import { createFaceLandmarker } from '../../lib/gaze/mediapipe';
-import { extractFeatures } from '../../lib/gaze/feature-extractor';
-import { AdaptiveEARDetector, type BlinkAction } from '../../lib/gaze/ear-detector';
-import { GazeSmoother } from '../../lib/gaze/smoother';
-import { WebCursorController } from '../../lib/gaze/mouse-controller';
 import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
+import * as Comlink from 'comlink';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AdaptiveEARDetector, type BlinkAction } from '../../lib/gaze/ear-detector';
+import { extractFeatures } from '../../lib/gaze/feature-extractor';
+import { createFaceLandmarker } from '../../lib/gaze/mediapipe';
+import { WebCursorController } from '../../lib/gaze/mouse-controller';
+import { GazeSmoother } from '../../lib/gaze/smoother';
+import type { GazeWorker } from '../../workers/gaze.worker';
 
 type Point2D = [number, number];
 
@@ -99,18 +99,18 @@ export const useGaze = () => {
 
 export function GazeProvider({ children }: { children: React.ReactNode }) {
   const [stats, setStats] = useState<DebugStats | null>(null);
-  
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const workerRef = useRef<Comlink.Remote<GazeWorker> | null>(null);
   const mouseControllerRef = useRef<WebCursorController | null>(null);
-  
+
   const earDetectorRef = useRef(new AdaptiveEARDetector());
-  const smootherRef = useRef(new GazeSmoother(0.18, 10, 180, 140));
-  
+  const smootherRef = useRef(new GazeSmoother(0.08, 5, 180, 140));
+
   const activeModelRef = useRef<'polynomial' | 'mlp' | 'none'>('none');
-  const polyWeightsRef = useRef<{x: number[], y: number[]} | null>(null);
-  
+  const polyWeightsRef = useRef<{ x: number[], y: number[] } | null>(null);
+
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(performance.now());
   const framesRef = useRef<number>(0);
@@ -159,7 +159,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
   const handleBlinkAction = useCallback((action: BlinkAction, x: number, y: number) => {
     if (action === 'none') return;
-    
+
     if (action === 'left_click') {
       if (!isDraggingRef.current) {
         dispatchMouseEvent('mousedown', x, y);
@@ -199,7 +199,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     const eyeOverlay = singleFaceReady ? buildEyeOverlay(result.faceLandmarks?.[0]) : null;
 
     const features = singleFaceReady ? extractFeatures(result) : null;
-    
+
     let activeRawGaze: Point2D = lastRawGazeRef.current;
     let inferenceMs = 0;
     let blinkState: BlinkAction = 'none';
@@ -242,7 +242,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
     // Làm mượt toạ độ
     const smoothed = smootherRef.current.update(activeRawGaze[0], activeRawGaze[1]);
-    
+
     // Cập nhật Cursor và gửi click event
     if (mouseControllerRef.current) {
       mouseControllerRef.current.moveTo(smoothed.x, smoothed.y);
@@ -285,7 +285,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const startPipeline = useCallback((videoElement: HTMLVideoElement) => {
     videoRef.current = videoElement;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    smootherRef.current = new GazeSmoother(0.18, 10, 180, 140);
+    smootherRef.current = new GazeSmoother(0.08, 5, 180, 140);
     hasRawGazeRef.current = false;
     lastRawGazeRef.current = [window.innerWidth / 2, window.innerHeight / 2];
     lastTimeRef.current = performance.now();
