@@ -18,4 +18,5 @@ export interface GazeFeatures {
   earLeft:  number;
   earRight: number;
   faceDetected: boolean;
+  isOccluded?: boolean;
 }

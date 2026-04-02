@@ -12,6 +12,7 @@ export class CalibrationSession {
     targetY: number,
     featureStream: AsyncIterable<GazeFeatures>,
     signal?: AbortSignal,
+    earThreshold?: number
   ): Promise<void> {
     this.throwIfAborted(signal);
     await this.sleep(this.STABLE_WAIT_MS, signal);
@@ -19,7 +20,9 @@ export class CalibrationSession {
     const buffer: number[][] = [];
     for await (const features of featureStream) {
       this.throwIfAborted(signal);
-      if (features.earLeft < 0.18 || features.earRight < 0.18) continue;
+      
+      const threshold = earThreshold ? earThreshold * 1.25 : 0.18; // 0.75 * baseline = 1.25 * RATIO
+      if (features.earLeft < threshold || features.earRight < threshold) continue;
 
       buffer.push(this.featuresToVector(features));
       if (buffer.length >= this.SAMPLES_PER_POINT) break;

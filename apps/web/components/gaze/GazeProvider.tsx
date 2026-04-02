@@ -75,6 +75,7 @@ interface GazeContextType {
   stopPipeline: () => void;
   setModel: (modelType: 'polynomial' | 'mlp' | 'none', weights?: PolynomialWeights | MLPWeights) => Promise<void>;
   getLatestFeatures: () => GazeFeatures | null;
+  getEarThreshold: () => number;
 }
 
 interface PolynomialWeights {
@@ -108,7 +109,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const mouseControllerRef = useRef<WebCursorController | null>(null);
 
   const earDetectorRef = useRef(new AdaptiveEARDetector());
-  const smootherRef = useRef(new GazeSmoother(0.08, 5, 180, 140));
+  const smootherRef = useRef(new GazeSmoother());
 
   const activeModelRef = useRef<'polynomial' | 'mlp' | 'none'>('none');
   const polyWeightsRef = useRef<{ x: number[], y: number[] } | null>(null);
@@ -121,7 +122,9 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const lastRawGazeRef = useRef<[number, number]>([0, 0]);
   const hasRawGazeRef = useRef<boolean>(false);
   const latestFeaturesRef = useRef<GazeFeatures | null>(null);
-
+    const getEarThreshold = useCallback(() => {
+      return earDetectorRef.current.getThreshold();
+    }, []);
   const stopPipeline = useCallback(() => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -231,7 +234,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       blinkState = earDetectorRef.current.update(features.earLeft, features.earRight, t0);
 
       // Nếu đang nhắm mắt sâu thì không predict tránh nhảy toạ độ, nội suy từ Smooth cũ
-      if (blinkState === 'none' && features.earLeft > 0.16 && features.earRight > 0.16) {
+      if (blinkState === 'none' && !features.isOccluded) {
         const t1 = performance.now();
         if (activeModelRef.current === 'mlp') {
           try {
@@ -308,7 +311,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const startPipeline = useCallback((videoElement: HTMLVideoElement) => {
     videoRef.current = videoElement;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    smootherRef.current = new GazeSmoother(0.08, 5, 180, 140);
+    smootherRef.current = new GazeSmoother();
     hasRawGazeRef.current = false;
     lastRawGazeRef.current = [window.innerWidth / 2, window.innerHeight / 2];
     lastTimeRef.current = performance.now();
@@ -335,7 +338,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const getLatestFeatures = useCallback(() => latestFeaturesRef.current, []);
 
   return (
-    <GazeContext.Provider value={{ stats, startPipeline, stopPipeline, setModel, getLatestFeatures }}>
+    <GazeContext.Provider value={{ stats, startPipeline, stopPipeline, setModel, getLatestFeatures, getEarThreshold }}>
       {children}
     </GazeContext.Provider>
   );

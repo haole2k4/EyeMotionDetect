@@ -99,6 +99,15 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const newArr = [...array];
+  for (let i = newArr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+  }
+  return newArr;
+}
+
 function withTimeout<T>(
   task: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
@@ -137,10 +146,10 @@ async function* createFeatureStream(
 }
 
 export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPanelProps) {
-  const { setModel, stats, getLatestFeatures } = useGaze();
+  const { setModel, stats, getLatestFeatures, getEarThreshold } = useGaze();
   const [isRunning, setIsRunning] = useState(false);
   const [currentRound, setCurrentRound] = useState(0);
-  const [currentPointIndex, setCurrentPointIndex] = useState<number | null>(null);
+  const [currentPoint, setCurrentPoint] = useState<CalibrationPoint | null>(null);
   const [trainingMae, setTrainingMae] = useState<number | null>(null);
   const [message, setMessage] = useState("Chua chay calibration");
   const [storedSampleCount, setStoredSampleCount] = useState(0);
@@ -158,9 +167,9 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
   const totalPointsPerRound = CALIBRATION_POINTS.length;
   const overlayPoint = useMemo(() => {
-    if (!isRunning || currentPointIndex === null) return null;
-    return CALIBRATION_POINTS[currentPointIndex] ?? null;
-  }, [currentPointIndex, isRunning]);
+    if (!isRunning || !currentPoint) return null;
+    return currentPoint;
+  }, [currentPoint, isRunning]);
 
   const runCalibration = useCallback(async () => {
     if (!cameraReady) {
@@ -174,7 +183,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
     setIsRunning(true);
     setCurrentRound(0);
-    setCurrentPointIndex(null);
+    setCurrentPoint(null);
     setTrainingMae(null);
     setMessage("Dang thu thap du lieu calibration...");
 
@@ -187,24 +196,23 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
         round += 1;
         setCurrentRound(round);
 
-        for (let index = 0; index < totalPointsPerRound; index += 1) {
-          setCurrentPointIndex(index);
-          setMessage(`Vong ${round}: diem ${index + 1}/${totalPointsPerRound}`);
-          const target = CALIBRATION_POINTS[index];
+          const shuffledPoints = shuffleArray(CALIBRATION_POINTS);
+          for (let index = 0; index < totalPointsPerRound; index += 1) {
+            const target = shuffledPoints[index];
+            setCurrentPoint(target);
+            setMessage(`Vong ${round}: diem ${index + 1}/${totalPointsPerRound}`);
 
-          await withTimeout(
-            (signal) => session.collectPoint(
-              target.x * window.innerWidth,
-              target.y * window.innerHeight,
-              createFeatureStream(getLatestFeatures, signal),
-              signal,
-            ),
-            POINT_TIMEOUT_MS,
-            "Het thoi gian lay mau cho mot diem, vui long thu lai",
-          );
-        }
-
-        setCurrentPointIndex(null);
+            await withTimeout(
+              (signal) => session.collectPoint(
+                target.x * window.innerWidth,
+                target.y * window.innerHeight,
+                createFeatureStream(getLatestFeatures, signal),
+                signal,
+                getEarThreshold()              ),
+              POINT_TIMEOUT_MS,
+              "Het thoi gian lay mau cho mot diem, vui long thu lai"
+            );
+          }        setCurrentPoint(null);
         continueRounds =
           round < MAX_ROUNDS &&
           window.confirm(`Da hoan thanh vong ${round}. Ban co muon tiep tuc them 1 vong calibration nua khong?`);
@@ -287,7 +295,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       const msg = error instanceof Error ? error.message : "Calibration that bai";
       setMessage(msg);
     } finally {
-      setCurrentPointIndex(null);
+      setCurrentPoint(null);
       setIsRunning(false);
     }
   }, [
@@ -311,7 +319,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     onModelApplied("fallback");
     setTrainingMae(null);
     setCurrentRound(0);
-    setCurrentPointIndex(null);
+    setCurrentPoint(null);
     setMessage("Da reset du lieu calibration. He thong dang o fallback mode.");
     await refreshStoredStats();
   }, [isRunning, onModelApplied, refreshStoredStats, setModel]);

@@ -12,6 +12,7 @@ export class AdaptiveEARDetector {
   private leftClosedSince: number | null = null;
   private rightClosedSince: number | null = null;
   private lastActionTime = 0;
+  private hasTriggeredDrag = false;
 
   // Hằng số tính theo ms
   private readonly CLICK_MIN = 80;
@@ -19,6 +20,10 @@ export class AdaptiveEARDetector {
   private readonly DRAG_MIN = 450;
   private readonly COOLDOWN_MS = 700;
   private readonly BOTH_EYE_SYNC_WINDOW = 180;
+
+  getThreshold(): number {
+    return this.baselineEAR * this.RATIO;
+  }
 
   update(earLeft: number, earRight: number, timestamp: number): BlinkAction {
     const ear = (earLeft + earRight) / 2;
@@ -35,6 +40,10 @@ export class AdaptiveEARDetector {
 
     let action: BlinkAction = 'none';
 
+    if (!isLeftClosed && !isRightClosed) {
+      this.hasTriggeredDrag = false;
+    }
+
     // Track thời điểm bắt đầu nhắm từng mắt
     if (isLeftClosed && this.leftClosedSince === null) {
       this.leftClosedSince = timestamp;
@@ -48,15 +57,15 @@ export class AdaptiveEARDetector {
       isLeftClosed &&
       isRightClosed &&
       this.leftClosedSince !== null &&
-      this.rightClosedSince !== null
+      this.rightClosedSince !== null &&
+      !this.hasTriggeredDrag
     ) {
       const timeDiff = Math.abs(this.leftClosedSince - this.rightClosedSince);
       const bothDuration = timestamp - Math.max(this.leftClosedSince, this.rightClosedSince);
 
       if (timeDiff <= this.BOTH_EYE_SYNC_WINDOW && bothDuration >= this.DRAG_MIN) {
         action = 'drag_toggle';
-        this.leftClosedSince = null;
-        this.rightClosedSince = null;
+        this.hasTriggeredDrag = true;
       }
     }
 
@@ -64,7 +73,6 @@ export class AdaptiveEARDetector {
     if (!isLeftClosed && this.leftClosedSince !== null) {
       const durationLeft = timestamp - this.leftClosedSince;
       const wasRightOpen = this.rightClosedSince === null;
-
       if (wasRightOpen && durationLeft >= this.CLICK_MIN && durationLeft <= this.CLICK_MAX) {
         action = 'left_click';
       }

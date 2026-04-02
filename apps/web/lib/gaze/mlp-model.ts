@@ -131,8 +131,18 @@ export class GazeMLPModel {
     input.dispose();
     output.dispose();
 
-    const clamp = (value: number) => Math.max(0, Math.min(1, value));
-    return [clamp(normX) * screenWidth, clamp(normY) * screenHeight];
+    const clampVal = (val: number, limit: number) => {
+      // MLP output is linear. Dùng hàm kẹp mềm ở 2 đầu nhưng tuyến tính ở giữa The center stays linear, 
+      // avoiding extreme amplification (which caused jitter).
+      // Giữ khoảng [0..1] mượt mà ở hai đầu cực biên.
+      const smoothVal = val < 0.1 ? (Math.exp((val - 0.1) * 10) * 0.1) : 
+                        val > 0.9 ? (1 - Math.exp((0.9 - val) * 10) * 0.1) : val;
+      
+      const res = Math.max(0, Math.min(1, smoothVal));
+      return limit * res;
+    };
+    
+    return [clampVal(normX, screenWidth), clampVal(normY, screenHeight)];
   }
 
   // Serialize để lưu lên PostgreSQL
