@@ -16,9 +16,9 @@ export class AdaptiveEARDetector {
   // Hằng số tính theo ms
   private readonly CLICK_MIN = 80;
   private readonly CLICK_MAX = 500;
-  private readonly DRAG_MIN = 600;
+  private readonly DRAG_MIN = 450;
   private readonly COOLDOWN_MS = 700;
-  private readonly BOTH_EYE_SYNC_WINDOW = 80;
+  private readonly BOTH_EYE_SYNC_WINDOW = 180;
 
   update(earLeft: number, earRight: number, timestamp: number): BlinkAction {
     const ear = (earLeft + earRight) / 2;
