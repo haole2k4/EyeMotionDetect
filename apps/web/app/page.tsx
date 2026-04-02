@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CalibrationPanel } from "../components/gaze/CalibrationPanel";
 import { useGaze } from "../components/gaze/GazeProvider";
 import { getCalibrationLocally } from "../lib/gaze/storage";
 
@@ -15,6 +16,7 @@ export default function Home() {
 
   const [status, setStatus] = useState("Chua bat dau");
   const [activeMode, setActiveMode] = useState<"fallback" | "polynomial" | "mlp">("fallback");
+  const [cameraReady, setCameraReady] = useState(false);
 
   useEffect(() => {
     const loadSavedModel = async () => {
@@ -62,8 +64,10 @@ export default function Home() {
 
       startPipeline(videoRef.current);
       setStatus("Dang chay eye tracking");
+      setCameraReady(true);
     } catch {
       setStatus("Khong mo duoc camera. Hay cap quyen webcam cho localhost:3000");
+      setCameraReady(false);
     }
   }, [startPipeline]);
 
@@ -78,6 +82,7 @@ export default function Home() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setCameraReady(false);
     setStatus("Da dung");
   }, [stopPipeline]);
 
@@ -110,6 +115,8 @@ export default function Home() {
             Stop
           </button>
         </div>
+
+        <CalibrationPanel cameraReady={cameraReady} onModelApplied={setActiveMode} />
 
         <div className="w-full max-w-md space-y-2">
           <div className="relative">

@@ -5,19 +5,41 @@ import type { GazeFeatures } from '../lib/gaze/types';
 let tf: typeof import('@tensorflow/tfjs') | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mlpModelInstance: any = null;
+let tfInitPromise: Promise<void> | null = null;
 
-const gazeWorker = {
-  async initTF() {
-    if (!tf) {
+async function ensureTFReady(): Promise<void> {
+  if (!tfInitPromise) {
+    tfInitPromise = (async () => {
       tf = await import('@tensorflow/tfjs');
+
       try {
         await import('@tensorflow/tfjs-backend-webgpu');
         await tf.setBackend('webgpu');
-        await tf.ready();
       } catch (e) {
-        console.warn('WebGPU not supported in worker, fallback to WASM/WebGL/CPU', e);
+        console.warn('WebGPU not supported in worker, fallback to WASM/CPU', e);
+        try {
+          await import('@tensorflow/tfjs-backend-wasm');
+          await tf.setBackend('wasm');
+        } catch {
+          await tf.setBackend('cpu');
+        }
       }
-    }
+
+      await tf.ready();
+    })();
+  }
+
+  try {
+    await tfInitPromise;
+  } catch (e) {
+    tfInitPromise = null;
+    throw e;
+  }
+}
+
+const gazeWorker = {
+  async initTF() {
+    await ensureTFReady();
   },
 
   async runPolynomial(features: GazeFeatures, coeffsX: number[], coeffsY: number[]): Promise<[number, number]> {
@@ -37,10 +59,14 @@ const gazeWorker = {
   },
 
   async loadMLPModel(json: string, weights: ArrayBuffer) {
-    if (!tf) await this.initTF();
+    await ensureTFReady();
+    const tfRef = tf;
+    if (!tfRef) {
+      throw new Error('TensorFlow backend not initialized');
+    }
 
     const parsed = JSON.parse(json);
-    mlpModelInstance = await tf!.loadLayersModel(tf!.io.fromMemory({
+    mlpModelInstance = await tfRef.loadLayersModel(tfRef.io.fromMemory({
       modelTopology: parsed.modelTopology,
       weightSpecs: parsed.weightSpecs,
       weightData: weights
@@ -48,14 +74,20 @@ const gazeWorker = {
   },
 
   async runMLP(features: GazeFeatures, screenWidth: number, screenHeight: number): Promise<[number, number]> {
-    if (!tf || !mlpModelInstance) {
+    await ensureTFReady();
+    const tfRef = tf;
+    if (!tfRef) {
+      throw new Error('TensorFlow backend not initialized');
+    }
+
+    if (!mlpModelInstance) {
       throw new Error('MLP Model not loaded in worker');
     }
 
     const { irisXLeft, irisYLeft, irisXRight, irisYRight, headPitch, headYaw, headRoll } = features;
     const inputFeatures = [irisXLeft, irisYLeft, irisXRight, irisYRight, headPitch, headYaw, headRoll];
 
-    const input = tf.tensor2d([inputFeatures]);
+    const input = tfRef.tensor2d([inputFeatures]);
     const output = mlpModelInstance.predict(input) as any;
     const [normX, normY] = Array.from(output.dataSync()) as [number, number];
     

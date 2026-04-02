@@ -3,6 +3,35 @@ import type { CalibrationSample } from './types';
 
 export class GazeMLPModel {
   private model: tf.LayersModel | null = null;
+  private static backendInitPromise: Promise<void> | null = null;
+
+  static async ensureBackendReady(): Promise<void> {
+    if (!GazeMLPModel.backendInitPromise) {
+      GazeMLPModel.backendInitPromise = (async () => {
+        try {
+          await import('@tensorflow/tfjs-backend-webgpu');
+          await tf.setBackend('webgpu');
+        } catch (e) {
+          console.warn('WebGPU not available in main thread, fallback to WASM/CPU', e);
+          try {
+            await import('@tensorflow/tfjs-backend-wasm');
+            await tf.setBackend('wasm');
+          } catch {
+            await tf.setBackend('cpu');
+          }
+        }
+
+        await tf.ready();
+      })();
+    }
+
+    try {
+      await GazeMLPModel.backendInitPromise;
+    } catch (e) {
+      GazeMLPModel.backendInitPromise = null;
+      throw e;
+    }
+  }
 
   build(): void {
     this.model = tf.sequential({
@@ -41,15 +70,21 @@ export class GazeMLPModel {
     screenHeight: number,
     onProgress?: (epoch: number, mae: number) => void
   ): Promise<{ finalMae: number; epochs: number }> {
+    await GazeMLPModel.ensureBackendReady();
+
     if (!this.model) {
       throw new Error('Model not built yet');
     }
 
     const xs = tf.tensor2d(samples.map(s => s.features));
-    const ys = tf.tensor2d(samples.map(s => [
-      s.screenX / screenWidth,
-      s.screenY / screenHeight
-    ]));
+    const ys = tf.tensor2d(samples.map((s) => {
+      const width = s.viewportWidth && s.viewportWidth > 0 ? s.viewportWidth : screenWidth;
+      const height = s.viewportHeight && s.viewportHeight > 0 ? s.viewportHeight : screenHeight;
+      return [
+        s.screenX / width,
+        s.screenY / height
+      ];
+    }));
 
     let finalMae = Infinity;
     let epochCount = 0;
@@ -127,6 +162,8 @@ export class GazeMLPModel {
   }
 
   async load(json: string, weights: ArrayBuffer): Promise<void> {
+    await GazeMLPModel.ensureBackendReady();
+
     const parsed = JSON.parse(json);
     this.model = await tf.loadLayersModel(tf.io.fromMemory({
       modelTopology: parsed.modelTopology,

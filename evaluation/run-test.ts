@@ -59,7 +59,7 @@ async function run() {
   });
   const timeTaken = (Date.now() - startTime) / 1000;
 
-  console.log(`\n✅ Train hoàn tất sau ${timeTaken.toFixed(2)} giây (${epochs} epochs). Final Training MAE: ${finalMae.toFixed(1)}px`);
+  console.log(`\nTrain hoàn tất sau ${timeTaken.toFixed(2)} giây (${epochs} epochs). Final Training MAE: ${finalMae.toFixed(1)}px`);
 
   console.log('\n4. Đánh giá tính chính xác của mô hình...');
   // Đánh giá với 30 mẫu test mới (Out of sample data chưa từng nhìn thấy trong tập train validation)
@@ -83,9 +83,9 @@ async function run() {
   const diffX = Math.abs(originalPred[0] - reconsPred[0]);
   const diffY = Math.abs(originalPred[1] - reconsPred[1]);
   if (diffX < 0.001 && diffY < 0.001) {
-    console.log('✅ PASS: Trí nhớ Weights bảo toàn chính xác qua Blob');
+    console.log('PASS: Trí nhớ Weights bảo toàn chính xác qua Blob');
   } else {
-    console.log(`❌ FAIL: Độ lệch sau Deserialize: x=${diffX}, y=${diffY}`);
+    console.log(`FAIL: Độ lệch sau Deserialize: x=${diffX}, y=${diffY}`);
   }
 }
 

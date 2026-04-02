@@ -3,6 +3,8 @@ export interface CalibrationSample {
   screenX: number;
   screenY: number;
   timestamp: number;
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 export interface GazeFeatures {

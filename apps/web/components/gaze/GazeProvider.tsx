@@ -8,6 +8,7 @@ import { extractFeatures } from '../../lib/gaze/feature-extractor';
 import { createFaceLandmarker } from '../../lib/gaze/mediapipe';
 import { WebCursorController } from '../../lib/gaze/mouse-controller';
 import { GazeSmoother } from '../../lib/gaze/smoother';
+import type { GazeFeatures } from '../../lib/gaze/types';
 import type { GazeWorker } from '../../workers/gaze.worker';
 
 type Point2D = [number, number];
@@ -72,7 +73,8 @@ interface GazeContextType {
   stats: DebugStats | null;
   startPipeline: (video: HTMLVideoElement) => void;
   stopPipeline: () => void;
-  setModel: (modelType: 'polynomial' | 'mlp', weights?: PolynomialWeights | MLPWeights) => Promise<void>;
+  setModel: (modelType: 'polynomial' | 'mlp' | 'none', weights?: PolynomialWeights | MLPWeights) => Promise<void>;
+  getLatestFeatures: () => GazeFeatures | null;
 }
 
 interface PolynomialWeights {
@@ -118,6 +120,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const isDraggingRef = useRef<boolean>(false);
   const lastRawGazeRef = useRef<[number, number]>([0, 0]);
   const hasRawGazeRef = useRef<boolean>(false);
+  const latestFeaturesRef = useRef<GazeFeatures | null>(null);
 
   const stopPipeline = useCallback(() => {
     if (rafRef.current) {
@@ -187,8 +190,26 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const video = videoRef.current;
+    if (
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+      video.videoWidth <= 0 ||
+      video.videoHeight <= 0
+    ) {
+      latestFeaturesRef.current = null;
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
+
     const t0 = performance.now();
-    const result = landmarkerRef.current.detectForVideo(videoRef.current, t0);
+    let result;
+    try {
+      result = landmarkerRef.current.detectForVideo(video, t0);
+    } catch {
+      latestFeaturesRef.current = null;
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
     const tMediaPipe = performance.now() - t0;
 
     const w = window.innerWidth;
@@ -203,6 +224,8 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     let activeRawGaze: Point2D = lastRawGazeRef.current;
     let inferenceMs = 0;
     let blinkState: BlinkAction = 'none';
+
+    latestFeaturesRef.current = features;
 
     if (features) {
       blinkState = earDetectorRef.current.update(features.earLeft, features.earRight, t0);
@@ -292,8 +315,13 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     rafRef.current = requestAnimationFrame(loop);
   }, [loop]);
 
-  const setModel = useCallback(async (modelType: 'polynomial' | 'mlp', weights?: PolynomialWeights | MLPWeights) => {
+  const setModel = useCallback(async (modelType: 'polynomial' | 'mlp' | 'none', weights?: PolynomialWeights | MLPWeights) => {
     activeModelRef.current = modelType;
+    if (modelType === 'none') {
+      polyWeightsRef.current = null;
+      return;
+    }
+
     if (modelType === 'polynomial' && weights && 'coeffsX' in weights) {
       polyWeightsRef.current = { x: weights.coeffsX, y: weights.coeffsY };
       return;
@@ -304,8 +332,10 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const getLatestFeatures = useCallback(() => latestFeaturesRef.current, []);
+
   return (
-    <GazeContext.Provider value={{ stats, startPipeline, stopPipeline, setModel }}>
+    <GazeContext.Provider value={{ stats, startPipeline, stopPipeline, setModel, getLatestFeatures }}>
       {children}
     </GazeContext.Provider>
   );
