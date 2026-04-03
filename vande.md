@@ -1,2 +1,0 @@
-# Test ở trình duyệt thì thế quái nào nó cứ cử động xung quanh, nhắm mở thì nó cũng không nhận diện được, drag thì nó nhận sai.
-# Nhìn thấy dòng này thì hãy cứu e chạy pnpm dev rồi lên localhost:3000 cấp quyền cam thôi
