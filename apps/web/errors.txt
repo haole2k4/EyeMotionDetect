@@ -1,2 +1,0 @@
-lib/gaze/feature-extractor.ts(52,26): error TS2345: Argument of type 'number[]' is not assignable to parameter of type 'Float32Array<ArrayBufferLike>'.
-  Type 'number[]' is missing the following properties from type 'Float32Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteLength, byteOffset, and 3 more.

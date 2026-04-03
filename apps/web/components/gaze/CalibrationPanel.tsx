@@ -28,15 +28,10 @@ interface CalibrationPoint {
 }
 
 const CALIBRATION_POINTS: CalibrationPoint[] = [
-  { x: 0.1, y: 0.1 },
-  { x: 0.5, y: 0.1 },
-  { x: 0.9, y: 0.1 },
-  { x: 0.1, y: 0.5 },
-  { x: 0.5, y: 0.5 },
-  { x: 0.9, y: 0.5 },
-  { x: 0.1, y: 0.9 },
-  { x: 0.5, y: 0.9 },
-  { x: 0.9, y: 0.9 },
+  { x: 0.15, y: 0.15 }, // Top-Left (A)
+  { x: 0.85, y: 0.15 }, // Top-Right (B)
+  { x: 0.15, y: 0.85 }, // Bottom-Left (C)
+  { x: 0.85, y: 0.85 }, // Bottom-Right (D)
 ];
 
 const SAMPLE_INTERVAL_MS = 16;
@@ -300,6 +295,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     }
   }, [
     cameraReady,
+    getEarThreshold,
     getLatestFeatures,
     onModelApplied,
     refreshStoredStats,

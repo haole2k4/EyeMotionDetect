@@ -53,6 +53,8 @@ function stabilizeRawGaze(nextRaw: Point2D, prevRaw: Point2D, hasPrev: boolean, 
   return [prevRaw[0] + dx * ratio, prevRaw[1] + dy * ratio];
 }
 
+export type RegionId = 'A' | 'B' | 'C' | 'D' | 'DEADZONE';
+
 interface DebugStats {
   fps: number;
   mediapipeMs: number;
@@ -67,7 +69,10 @@ interface DebugStats {
   faceCount: number;
   singleFaceReady: boolean;
   eyeOverlay: EyeOverlay | null;
+  currentRegion: RegionId;
+  dwellProgress: number;
 }
+
 
 interface GazeContextType {
   stats: DebugStats | null;
@@ -122,6 +127,12 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const lastRawGazeRef = useRef<[number, number]>([0, 0]);
   const hasRawGazeRef = useRef<boolean>(false);
   const latestFeaturesRef = useRef<GazeFeatures | null>(null);
+
+  const regionRef = useRef<RegionId>('DEADZONE');
+  const dwellStartRef = useRef<number | null>(null);
+  const DWELL_TIME_MS = 2000; // 2 seconds
+  const currentDwellProgressRef = useRef<number>(0);
+
     const getEarThreshold = useCallback(() => {
       return earDetectorRef.current.getThreshold();
     }, []);
@@ -277,7 +288,46 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       handleBlinkAction(blinkState, smoothed.x, smoothed.y);
     }
 
-    // Tính FPS
+    // Calculate Region and Dwell-time
+    const px = smoothed.x / w;
+    const py = smoothed.y / h;
+    let newRegion: RegionId = 'DEADZONE';
+    
+    const marginX = 0.3; // 30% width for answers
+    const marginY = 0.3; // 30% height for answers
+    
+    if (px < marginX && py < marginY) {
+      newRegion = 'A';
+    } else if (px > 1 - marginX && py < marginY) {
+      newRegion = 'B';
+    } else if (px < marginX && py > 1 - marginY) {
+      newRegion = 'C';
+    } else if (px > 1 - marginX && py > 1 - marginY) {
+      newRegion = 'D';
+    }
+
+    if (newRegion !== regionRef.current) {
+      regionRef.current = newRegion;
+      if (newRegion !== 'DEADZONE') {
+        dwellStartRef.current = performance.now();
+      } else {
+        dwellStartRef.current = null;
+      }
+      currentDwellProgressRef.current = 0;
+    } else if (newRegion !== 'DEADZONE' && dwellStartRef.current) {
+      const elapsedDwell = performance.now() - dwellStartRef.current;
+      currentDwellProgressRef.current = Math.min(elapsedDwell / DWELL_TIME_MS, 1.0);
+      if (currentDwellProgressRef.current >= 1.0) {
+        // Trigger a click!
+        console.log(`Dwell click at Region ${newRegion}`);
+        dispatchMouseEvent('click', smoothed.x, smoothed.y);
+        // Reset timer to avoid multiple clicks
+        dwellStartRef.current = performance.now();
+        currentDwellProgressRef.current = 0;
+      }
+    }
+
+    // TÃ­nh FPS
     framesRef.current++;
     const now = performance.now();
     const elapsed = now - lastTimeRef.current;
@@ -303,10 +353,12 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       faceCount,
       singleFaceReady,
       eyeOverlay,
+      currentRegion: regionRef.current,
+      dwellProgress: currentDwellProgressRef.current
     });
 
     rafRef.current = requestAnimationFrame(loop);
-  }, [handleBlinkAction]);
+  }, [dispatchMouseEvent, handleBlinkAction]);
 
   const startPipeline = useCallback((videoElement: HTMLVideoElement) => {
     videoRef.current = videoElement;

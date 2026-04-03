@@ -10,17 +10,20 @@ import { GazeWeights } from '../weights/weights.entity';
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ unique: true })
-  email: string;
+  email!: string;
 
   @Column()
-  passwordHash: string;
+  passwordHash!: string;
+
+  @Column({ default: 'user' })
+  role!: string;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @OneToOne(() => GazeWeights, (weights) => weights.user, { cascade: true })
-  gazeWeights: GazeWeights;
+  gazeWeights?: GazeWeights;
 }

@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "EyeMotionDetect Local",
+      "Group": "Development",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "gaze_dev",
+      "Username": "gaze",
+      "SSLMode": "prefer",
+      "Comment": "Auto-loaded server for local development"
+    }
+  }
+}

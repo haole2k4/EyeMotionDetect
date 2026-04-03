@@ -27,8 +27,8 @@ EyeMotionDetect/
 ## Yêu cầu Hệ thống
 
 - **Node.js**: `v22.14.0+`
-- **Package Manager**: `pnpm v9.15.4+` (kèm hệ thống cache Turborepo)
-- **Cơ sở dữ liệu**: Đã cài đặt [Docker](https://www.docker.com/) (dành cho PostgreSQL container)
+- **Package Manager**: `pnpm v10.18.2+` (kèm hệ thống cache Turborepo)
+- **Cơ sở dữ liệu**: Đã cài đặt [Docker](https://www.docker.com/) (dành cho PostgreSQL + pgAdmin4)
 - **Trình duyệt**: Hỗ trợ chuẩn AI WebGPU mới nhất (Chrome 121+ / Edge 121+).
 
 ---
@@ -41,7 +41,7 @@ EyeMotionDetect/
 - Máy đã cài đặt **Node.js**: Phiên bản tối thiểu `v22.14.0`.
 - Cài đặt **pnpm** (Package manager chính của dự án):
   ```bash
-  npm install -g pnpm@9.15.4
+  npm install -g pnpm@10.18.2
   ```
 - Máy tính đã cài đặt **Docker Desktop** (hoặc trình giả lập daemon container tương đương).
 
@@ -60,14 +60,31 @@ pnpm install
 
 ### Bước 2: Khởi tạo Cơ sở Dữ liệu (PostgreSQL)
 
-Mở phần mềm Docker, sau đó khởi chạy server database PostgreSQL từ file thiết lập có sẵn ở thư mục gốc:
+Mở bash/terminal, sau đó khởi chạy cả PostgreSQL và pgAdmin4 từ file thiết lập có sẵn ở thư mục gốc:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
 ```
-> **Thông tin DB**: Container được tạo sẽ tự động chạy ngầm mở port `5432`, với database mặc định: `gaze_dev`, user: `gaze`, pass: `gaze_dev_pass`. Môi trường API Backend Node.js cũng sẽ tự động đọc cấu hình này để liên kết.
 
-*(Tùy chọn) - Nếu bạn sử dụng TypeORM migrations thay vì thẻ `synchronize: true`, bạn cần seed dữ liệu ban đầu cho database:*
+> **Thông tin DB**: Container PostgreSQL mở port `5432`, database mặc định: `gaze_dev`, user: `gaze`, pass: `gaze_dev_pass`.
+> **pgAdmin4**: Truy cập tại `http://localhost:5050`, mặc định email `admin@eyemotiondetect.dev`, password `admin123456`.
+> **Auto setup**: pgAdmin tự nạp sẵn server `EyeMotionDetect Local` từ `docker/pgadmin/servers.json`.
+
+Nếu container đã được tạo từ trước, có thể dùng lệnh start nhanh:
+
+```bash
+docker start eyemotiondetect eyemotiondetect-pgadmin
+```
+
+### Database Management
+Bạn có thể quản trị DB bằng:
+- **pgAdmin4 container** đi kèm trong `docker-compose.dev.yml`.
+- Các công cụ khác như **SQLTools**, **Database Client** (VS Code) hoặc **DBeaver**.
+
+Chi tiết backend workflow, lệnh dev và cách kết nối pgAdmin4: xem tài liệu [docs/BACKEND_DEV.md](./docs/BACKEND_DEV.md).
+Tong hop tai lieu ky thuat: [docs/README.md](./docs/README.md).
+
+*(Tùy chọn) - Tiến hành nạp schema cho Database nếu cần:*
 ```bash
 # Tiến hành nạp schema cho Database
 cd apps/api

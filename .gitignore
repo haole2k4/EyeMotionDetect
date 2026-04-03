@@ -94,3 +94,5 @@ docker-data/
 # Misc
 # ========================
 *.pem
+
+.vscode/

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { GazeProvider } from "../components/gaze/GazeProvider";
 import { DebugOverlay } from "../components/gaze/DebugOverlay";
+import { Providers } from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,10 +28,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <GazeProvider>
-          {children}
-          <DebugOverlay />
-        </GazeProvider>
+        <Providers>
+          <GazeProvider>
+            {children}
+            <DebugOverlay />
+          </GazeProvider>
+        </Providers>
       </body>
     </html>
   );

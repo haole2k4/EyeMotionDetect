@@ -10,7 +10,7 @@ import {
 import { WeightsService } from './weights.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@Controller('api/weights')
+@Controller('weights')
 @UseGuards(JwtAuthGuard)
 export class WeightsController {
   constructor(private readonly weightsService: WeightsService) {}
