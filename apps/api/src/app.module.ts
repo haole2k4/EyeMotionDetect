@@ -6,8 +6,12 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { WeightsModule } from './weights/weights.module';
+import { QuestionsModule } from './questions/questions.module';
+import { ExamsModule } from './exams/exams.module';
 import { User } from './users/user.entity';
 import { GazeWeights } from './weights/weights.entity';
+import { Question } from './questions/question.entity';
+import { Exam } from './exams/entities/exam.entity';
 
 @Module({
   imports: [
@@ -19,12 +23,14 @@ import { GazeWeights } from './weights/weights.entity';
       username: process.env.DB_USERNAME || 'gaze',
       password: process.env.DB_PASSWORD || 'gaze_dev_pass',
       database: process.env.DB_DATABASE || 'gaze_dev',
-      entities: [User, GazeWeights],
+      entities: [User, GazeWeights, Question, Exam],
       synchronize: false,
     }),
     UsersModule,
     AuthModule,
     WeightsModule,
+    QuestionsModule,
+    ExamsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

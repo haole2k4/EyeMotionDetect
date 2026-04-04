@@ -1,6 +1,8 @@
 import { DataSource } from 'typeorm';
 import { User } from './users/user.entity';
 import { GazeWeights } from './weights/weights.entity';
+import { Question } from './questions/question.entity';
+import { Exam } from './exams/entities/exam.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -10,6 +12,6 @@ export const AppDataSource = new DataSource({
   password: process.env.DB_PASSWORD || 'gaze_dev_pass',
   database: process.env.DB_DATABASE || 'gaze_dev',
   synchronize: false,
-  entities: [User, GazeWeights],
+  entities: [User, GazeWeights, Question, Exam],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
 });

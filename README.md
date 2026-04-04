@@ -1,25 +1,32 @@
 # EyeMotionDetect (Web Edition)
 
-Điều khiển chuột máy tính bằng cử động mắt hoàn toàn trên trình duyệt, sử dụng **MediaPipe Tasks Vision** để phát hiện nháy mắt (EAR), trích xuất đặc trưng khuôn mặt (Landmarks, Head Pose, Iris), kết hợp với các mô hình Machine Learning (Polynomial Regression / MLP Deep Learning) để ước lượng và điều hướng tọa độ màn hình. 
+Hệ thống điều khiển giao diện trắc nghiệm (MCQ 4 lựa chọn) bằng cử động mắt hoàn toàn trên trình duyệt, sử dụng **MediaPipe Tasks Vision** để trích xuất đặc trưng khuôn mặt (Landmarks, Head Pose, Iris), kết hợp với mô hình Machine Learning (Polynomial Regression) để xác định vùng nhìn và tự động chọn đáp án qua cơ chế **Dwell-time**.
 
-Dự án đã được chuyển đổi sang kiến trúc **Monorepo (Turborepo)** chạy hoàn toàn bằng TypeScript, bao gồm hệ thống Edge-AI suy luận trực tiếp ở frontend và backend để cá nhân hóa dữ liệu.
+Dự án đã được chuyển đổi sang kiến trúc **Monorepo (Turborepo)** chạy hoàn toàn bằng TypeScript, bao gồm hệ thống Edge-AI suy luận trực tiếp ở frontend và backend PostgreSQL để quản lý tài khoản người dùng và cá nhân hóa dữ liệu.
+
+## Tính năng nổi bật
+
+- **Chế độ trắc nghiệm (MCQ Mode):** Giao diện tập trung vào 4 lựa chọn (A, B, C, D) chia thành các phân vùng trên màn hình.
+- **Hiệu chuẩn (Calibration) 4 điểm:** Tối giản thời gian huấn luyện với 4 vị trí các góc, đánh giá độ chính xác qua phân vùng khu vực (region classification) thay vì cố định tọa độ pixel chính xác.
+- **Chọn đáp án bằng Dwell-time:** Khắc phục lỗi nháy mắt vô tình (blink-to-click) bằng cách đếm thời gian nhìn liên tục (1.5s - 2.0s) vào một đáp án thông qua Dwell-time State Machine tiến tiến.
 
 ## Kiến trúc Hệ thống (Hybrid Edge-AI 2026)
 
-- **Frontend (Edge Computation):** Xây dựng bằng Next.js 15, MediaPipe Face Landmarker, cấu hình Web Workers, và TensorFlow.js (WebGPU backend). Mọi tác vụ suy luận thời gian thực (realtime inference) đều chạy nội bộ trên trình duyệt của người dùng với độ trễ tối thiểu (< 150ms).
-- **Backend (Data & Personalization):** Xây dựng bằng NestJS 11 kết hợp PostgreSQL. Chịu trách nhiệm quản lý tài khoản người dùng, lưu trữ lịch sử tinh chỉnh (calibration), cấu hình nháy mắt, và model weights (tọa độ mapper) cho từng người dùng riêng biệt.
-- **Monorepo:** Quản lý mã nguồn tập trung bằng `pnpm` workspaces và `turborepo`.
+- **Frontend (Edge Computation):** Xây dựng bằng Next.js 15, MediaPipe Face Landmarker, cấu hình Web Workers, và TensorFlow.js. Mọi tác vụ suy luận thời gian thực (realtime inference) đều chạy nội bộ trên trình duyệt với độ trễ tối thiểu (< 150ms) bằng WebGPU.
+- **Backend (Data & Personalization):** Xây dựng bằng NestJS 11 kết hợp PostgreSQL. Chịu trách nhiệm quản lý tài khoản người dùng, lưu trữ trọng số hiệu ứng cá nhân hóa và quản trị tự động qua Auth JWT.
+- **Monorepo:** Quản lý mã nguồn tập trung bằng `pnpm` workspaces và quy trình build từ `turborepo`.
 
 ## Cấu trúc Dự án
 
 ```text
 EyeMotionDetect/
 ├── apps/
-│   ├── api/            # Backend NestJS (REST API, TypeORM, Auth, Profiles, Weights DB)
-│   └── web/            # Frontend Next.js (MediaPipe, TF.js, UI, Calibration)
+│   ├── api/            # Backend NestJS (REST API, TypeORM, Auth, DB)
+│   └── web/            # Frontend Next.js (MediaPipe, TF.js, UI, Calibration MCQ)
 ├── packages/
-│   └── shared-types/   # (Dự kiến) Shared types dùng chung cho cả frontend/backend
-├── docker-compose.dev.yml # Docker compose khởi tạo PostgreSQL dev
+│   └── shared-types/   # Shared types dùng chung cho cả frontend/backend
+├── docs/               # Tài liệu kỹ thuật chi tiết
+├── docker-compose.dev.yml
 ├── pnpm-workspace.yaml
 └── turbo.json
 ```
@@ -27,98 +34,59 @@ EyeMotionDetect/
 ## Yêu cầu Hệ thống
 
 - **Node.js**: `v22.14.0+`
-- **Package Manager**: `pnpm v10.18.2+` (kèm hệ thống cache Turborepo)
-- **Cơ sở dữ liệu**: Đã cài đặt [Docker](https://www.docker.com/) (dành cho PostgreSQL + pgAdmin4)
+- **Package Manager**: `pnpm v10.18.2+`
+- **Cơ sở dữ liệu**: Đã cài đặt [Docker Desktop](https://www.docker.com/) (dành cho PostgreSQL + pgAdmin4)
 - **Trình duyệt**: Hỗ trợ chuẩn AI WebGPU mới nhất (Chrome 121+ / Edge 121+).
 
 ---
 
 ## Hướng dẫn Thiết lập & Khởi chạy
 
-Để máy tính của bạn tự động chạy được hệ thống, vui lòng thực hiện tuần tự các bước dưới đây:
+### Bước 1: Chuẩn bị Môi trường
 
-### Bước 0: Chuẩn bị Môi trường (Prerequisites)
-- Máy đã cài đặt **Node.js**: Phiên bản tối thiểu `v22.14.0`.
-- Cài đặt **pnpm** (Package manager chính của dự án):
-  ```bash
-  npm install -g pnpm@10.18.2
-  ```
-- Máy tính đã cài đặt **Docker Desktop** (hoặc trình giả lập daemon container tương đương).
-
-### Bước 1: Cài đặt Dependencies
-
-Mở bash/terminal, clone project theo địa chỉ repository hiện tại và cài đặt các phụ thuộc (dependencies) xuyên suốt toàn bộ workspace:
+Mở Terminal/Bash, tải repository về máy và cài đặt toàn bộ dependencies qua pnpm:
 
 ```bash
 git clone git@github.com:haole2k4/EyeMotionDetect.git
 cd EyeMotionDetect
-
-# Tải và build cache các thư viện thông qua pnpm
+npm install -g pnpm@10.18.2
 pnpm install
 ```
-*(Tiến trình này sẽ động bộ các cài đặt từ module trong `apps/api` cho backend và `apps/web` cho frontend)*
 
 ### Bước 2: Khởi tạo Cơ sở Dữ liệu (PostgreSQL)
 
-Mở bash/terminal, sau đó khởi chạy cả PostgreSQL và pgAdmin4 từ file thiết lập có sẵn ở thư mục gốc:
+Hãy chắc chắn bạn đã bật Docker Desktop, sau đó khởi chạy cả môi trường DB và môi trường quản trị:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-> **Thông tin DB**: Container PostgreSQL mở port `5432`, database mặc định: `gaze_dev`, user: `gaze`, pass: `gaze_dev_pass`.
-> **pgAdmin4**: Truy cập tại `http://localhost:5050`, mặc định email `admin@eyemotiondetect.dev`, password `admin123456`.
-> **Auto setup**: pgAdmin tự nạp sẵn server `EyeMotionDetect Local` từ `docker/pgadmin/servers.json`.
+- **Container Database**: Port `5432` | DB mặc định: `gaze_dev` | User: `gaze` | Pass: `gaze_dev_pass`.
+- **Giao diện pgAdmin4**: Truy cập `http://localhost:5050` | Email: `admin@eyemotiondetect.dev` | Pass: `admin123456`.
+- **Tài khoản Admin App**: Ngay khi backend lên, hệ thống cấp sẵn tài khoản cho admin (Email: `admin@eyemotiondetect.dev` | Pass: `admin`).
 
-Nếu container đã được tạo từ trước, có thể dùng lệnh start nhanh:
-
-```bash
-docker start eyemotiondetect eyemotiondetect-pgadmin
-```
-
-### Database Management
-Bạn có thể quản trị DB bằng:
-- **pgAdmin4 container** đi kèm trong `docker-compose.dev.yml`.
-- Các công cụ khác như **SQLTools**, **Database Client** (VS Code) hoặc **DBeaver**.
-
-Chi tiết backend workflow, lệnh dev và cách kết nối pgAdmin4: xem tài liệu [docs/BACKEND_DEV.md](./docs/BACKEND_DEV.md).
-Tong hop tai lieu ky thuat: [docs/README.md](./docs/README.md).
-
-*(Tùy chọn) - Tiến hành nạp schema cho Database nếu cần:*
-```bash
-# Tiến hành nạp schema cho Database
-cd apps/api
-pnpm typeorm migration:run -d src/data-source.ts
-cd ../..
-```
+*(Trường hợp container bị tắt, dùng lệnh `docker start eyemotiondetect eyemotiondetect-pgadmin` để bật lại)*.
 
 ### Bước 3: Khởi chạy Máy chủ Development
 
-Quay lại vị trí gốc của ứng dụng (thư mục có chứa tệp `turbo.json`), dùng Turborepo để khởi động đồng thời tất cả các client:
+Tại vị trí chứa file thư mục gốc của project, gửi lệnh qua Turborepo để bật đồng thời frontend Web UI và NextJS API:
 
 ```bash
-# Lệnh duy nhất tự động chạy dev cả ở Web lẫn API theo turbo config
 pnpm run dev
 ```
 
-Tiến trình khi chạy thành công sẽ mở ra 2 cổng dịch vụ cục bộ:
-- **🌐 Trải nghiệm Trực tiếp (Web Client - Giao diện điều khiển)**: Mở trình duyệt tại [http://localhost:3000](http://localhost:3000)
-- **⚙️ Backend Service (API Server - Hệ thống Data)**: Các request backend tương tác tại [http://localhost:3001](http://localhost:3001)
+Hệ thống bật tại 2 dịch vụ nội bộ:
+- **🌐 Trải nghiệm Trực tiếp (Web GUI MCQ Mode)**: [http://localhost:3000](http://localhost:3000)
+- **⚙️ Backend API Server (Database Services)**: [http://localhost:3001](http://localhost:3001)
 
-> **Lưu ý (Troubleshooting)**: Hãy mở `Developer Console (F12)` trên Chrome và ấn tab *Performance* để xem MediaPipe có đang hoạt động tốt trên WebGPU hay không. Nếu FPS quá thấp, hãy đảm bảo trình duyệt của bạn đang bật tính năng hỗ trợ WebGPU.
+> **Troubleshooting MediaPipe**: Hãy mở `Developer Console (F12)` trên Chrome, kiểm tra xem có bất kỳ lỗi giới hạn tài nguyên WebGPU nào hay không. Cấp quyền truy cập cho máy tính đầy đủ về Camera trước khi sử dụng ứng dụng.
 
 ---
 
-## Lộ trình Phát triển (Quy hoạch theo `Plan.md`)
+## Tài liệu Hướng dẫn Vận hành & Phát triển
 
-Chiến lược triển khai hệ thống Web được chia thành các Phase với chuẩn hoá rõ ràng (Xem chi tiết kỹ thuật trong tệp [Plan.md](./Plan.md)):
+Thiết kế mô hình gốc cũ điều hướng chuột tự do đã được thay thế. Vui lòng đọc các tài liệu cập nhật tại mục [docs](./docs/README.md) để nắm cơ chế mới:
 
-* **Phase 0:** Cấu hình Monorepo, WebGPU check, NestJS & Next.js khởi tạo dự án.
-* **Phase 1:** Triển khai Database Schema & API Foundation (Lưu trữ và phục hồi MLP weights/Polynomial coeffs cá nhân).
-* **Phase 2:** Tích hợp MediaPipe Integration & Feature Extraction (FaceLandmarker, Iris Normalization, ma trận góc Face Pose). Xây dựng cơ chế động phân tích Tỷ lệ nháy mắt (Adaptive EAR).
-* **Phase 3:** Trải nghiệm lưới điểm Calibration (Polynomial Regression) cho cá nhân. Thu thập chắt lọc (median buffer) tiến tới fit mô hình hồi quy.
-* **Phase 4:** Huấn luyện mô hình cá nhân hóa bằng ML (TF.js MLP Model), train ngay tại phía Edge Client dựa trên mẫu dữ liệu thu được sau hiệu chuẩn, đẩy trọng số về server lưu trữ.
-* **Phase 5:** Bộ lọc Gaze Smoother (giảm nhiễu điểm nhìn) bằng các thuật toán như kỹ thuật EMA, 1€ Filter triệt để triệt tiêu tín hiệu Jitter và Outlier noise.
-* **Phase 6:** Đưa vòng lặp suy luận thị giác vào background Worker, giải phóng LUỒNG MÀN HÌNH CHÍNH (main thread) của trình duyệt. Tối ưu khung hình FPS.
-
-> *Lưu ý: Dự kiến phiên bản Web loại bỏ hoàn toàn Python để tăng mức độ liền mạch sản phẩm cho các users phổ thông.*
+1. **[Backend Dev & Setup](./docs/BACKEND_DEV.md)**: Chi tiết cách tương tác Terminal API, role admin, test users và auto-migration database TypeORM.
+2. **[Calibration Guide (Cấu hình 4 điểm)](./docs/CALIBRATION_GUIDE.md)**: Quy trình hiệu chuẩn tinh gọn, phân tích độ sai lệch trên 4 khu vực màn hình chéo nhau.
+3. **[Eye Actions Mapping (Chống sai lệch do nháy mắt)](./docs/EYE_ACTIONS_MAPPING.md)**: Cách hoạt động state machine của Dwell-time thay thế hoàn toàn kỹ thuật thao tác nháy mắt (blink gesture) để hạn chế rung giật ngẫu nhiên trong vùng chỉ định.

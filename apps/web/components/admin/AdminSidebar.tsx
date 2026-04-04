@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Users, FileQuestion, Target, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, FileQuestion, Target, LogOut, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/store/auth';
@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 
 const NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/exams', label: 'Quản lý đề thi', icon: FileText },
   { href: '/admin/questions', label: 'Quản lý câu hỏi', icon: FileQuestion },
   { href: '/admin/users', label: 'Quản lý User', icon: Users },
   { href: '/admin/gaze-data', label: 'Quản lý dữ liệu mắt', icon: Target },
