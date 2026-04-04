@@ -20,6 +20,7 @@ export class UsersService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    const adminUsername = 'admin';
     const adminEmail = 'admin@eyemotiondetect.dev';
     const existingAdmin = await this.findByEmail(adminEmail);
     
@@ -28,6 +29,7 @@ export class UsersService implements OnModuleInit {
       const passwordHash = await bcrypt.hash('admin', salt);
       
       const adminUser = this.usersRepository.create({
+        username: adminUsername,
         email: adminEmail,
         passwordHash,
         role: 'admin'
@@ -35,11 +37,25 @@ export class UsersService implements OnModuleInit {
       
       await this.usersRepository.save(adminUser);
       this.logger.log('Default admin user created.');
+      return;
+    }
+
+    if (existingAdmin.username !== adminUsername) {
+      const existedUsername = await this.findByUsername(adminUsername);
+      if (!existedUsername || existedUsername.id === existingAdmin.id) {
+        existingAdmin.username = adminUsername;
+        await this.usersRepository.save(existingAdmin);
+        this.logger.log('Default admin username normalized to admin.');
+      }
     }
   }
 
   async findByEmail(email: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { email } });
+  }
+
+  async findByUsername(username: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { username } });
   }
 
   async findById(id: string): Promise<User | null> {
@@ -50,6 +66,7 @@ export class UsersService implements OnModuleInit {
     const users = await this.usersRepository.find({ relations: ['gazeWeights'] });
     return users.map(user => ({
       id: user.id,
+      username: user.username,
       email: user.email,
       role: user.role,
       createdAt: user.createdAt,
@@ -58,7 +75,14 @@ export class UsersService implements OnModuleInit {
   }
 
   async create(user: Partial<User>): Promise<User> {
+    if (!user.username) throw new ConflictException('Username required');
     if (!user.email) throw new ConflictException('Email required');
+
+    const existingByUsername = await this.findByUsername(user.username);
+    if (existingByUsername) {
+      throw new ConflictException('Username already in use');
+    }
+
     const existing = await this.findByEmail(user.email);
     if (existing) {
       throw new ConflictException('Email already in use');
@@ -77,6 +101,13 @@ export class UsersService implements OnModuleInit {
       const userWithSameEmail = await this.findByEmail(user.email);
       if (userWithSameEmail && userWithSameEmail.id !== id) {
         throw new ConflictException('Email already in use');
+      }
+    }
+
+    if (user.username && user.username !== existingUser.username) {
+      const userWithSameUsername = await this.findByUsername(user.username);
+      if (userWithSameUsername && userWithSameUsername.id !== id) {
+        throw new ConflictException('Username already in use');
       }
     }
 

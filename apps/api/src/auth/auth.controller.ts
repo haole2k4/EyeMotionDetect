@@ -16,10 +16,10 @@ export class AuthController {
 
   @Post('register')
   async register(@Body() body: any) {
-    if (!body.email || !body.password) {
-      throw new UnauthorizedException('Email and password required');
+    if (!body.username || !body.email || !body.password) {
+      throw new UnauthorizedException('Username, email and password required');
     }
-    return this.authService.register(body.email, body.password);
+    return this.authService.register(body.username, body.email, body.password);
   }
 
   @Post('login')

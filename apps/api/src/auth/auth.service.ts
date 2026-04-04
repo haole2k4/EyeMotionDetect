@@ -10,11 +10,12 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async register(email: string, pass: string) {
+  async register(username: string, email: string, pass: string) {
     const salt = await bcrypt.genSalt();
     const passwordHash = await bcrypt.hash(pass, salt);
 
     const user = await this.usersService.create({
+      username,
       email,
       passwordHash,
     });
@@ -32,10 +33,10 @@ export class AuthService {
   }
 
   async login(user: any) {
-    const payload = { email: user.email, sub: user.id, role: user.role };
+    const payload = { username: user.username, email: user.email, sub: user.id, role: user.role };
     return {
       access_token: this.jwtService.sign(payload),
-      user: { id: user.id, email: user.email, role: user.role },
+      user: { id: user.id, username: user.username, email: user.email, role: user.role },
     };
   }
 }

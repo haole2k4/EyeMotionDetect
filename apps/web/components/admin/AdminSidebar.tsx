@@ -19,6 +19,7 @@ const NAV_ITEMS = [
 export function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
 
   const handleLogout = () => {
@@ -35,6 +36,11 @@ export function AdminSidebar() {
       <div className="p-6">
         <h2 className="text-2xl font-bold tracking-tight text-blue-600">EyeMotion</h2>
         <p className="text-sm text-gray-500 font-medium">Detector Admin</p>
+        {user?.username ? (
+          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            @{user.username}
+          </p>
+        ) : null}
       </div>
       
       <Separator />

@@ -17,12 +17,14 @@ import * as bcrypt from 'bcryptjs';
 type UserRole = 'admin' | 'user';
 
 interface CreateUserBody {
+  username: string;
   email: string;
   password: string;
   role?: UserRole;
 }
 
 interface UpdateUserBody {
+  username?: string;
   email?: string;
   password?: string;
   role?: UserRole;
@@ -48,8 +50,8 @@ export class UsersController {
   @Post()
   @Roles('admin')
   async createUser(@Body() body: CreateUserBody) {
-    if (!body.email || !body.password) {
-      throw new BadRequestException('Email and password are required');
+    if (!body.username || !body.email || !body.password) {
+      throw new BadRequestException('Username, email and password are required');
     }
 
     this.ensureValidRole(body.role);
@@ -57,23 +59,28 @@ export class UsersController {
     const salt = await bcrypt.genSalt();
     const passwordHash = await bcrypt.hash(body.password, salt);
     const user = await this.usersService.create({
+      username: body.username,
       email: body.email,
       passwordHash,
       role: body.role ?? 'user',
     });
-    return { id: user.id, email: user.email, role: user.role };
+    return { id: user.id, username: user.username, email: user.email, role: user.role };
   }
 
   @Put(':id')
   @Roles('admin')
   async updateUser(@Param('id') id: string, @Body() body: UpdateUserBody) {
-    if (!body.email && !body.password && !body.role) {
+    if (!body.username && !body.email && !body.password && !body.role) {
       throw new BadRequestException('At least one field is required');
     }
 
     this.ensureValidRole(body.role);
 
-    const updateData: { email?: string; role?: UserRole; passwordHash?: string } = {};
+    const updateData: { username?: string; email?: string; role?: UserRole; passwordHash?: string } = {};
+
+    if (body.username) {
+      updateData.username = body.username;
+    }
 
     if (body.email) {
       updateData.email = body.email;
@@ -89,7 +96,7 @@ export class UsersController {
     }
 
     const user = await this.usersService.update(id, updateData);
-    return { id: user.id, email: user.email, role: user.role };
+    return { id: user.id, username: user.username, email: user.email, role: user.role };
   }
 
   @Delete(':id')

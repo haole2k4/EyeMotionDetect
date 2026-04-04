@@ -2,8 +2,8 @@ import { create } from 'zustand';
 
 interface AuthState {
   token: string | null;
-  user: { email: string; role: string } | null;
-  setAuth: (token: string, user: { email: string; role: string }) => void;
+  user: { id: string; username: string; email: string; role: string } | null;
+  setAuth: (token: string, user: { id: string; username: string; email: string; role: string }) => void;
   logout: () => void;
 }
 
@@ -18,7 +18,23 @@ const readStoredUser = () => {
   }
 
   try {
-    return JSON.parse(raw) as { email: string; role: string };
+    const parsed = JSON.parse(raw) as {
+      id?: string;
+      username?: string;
+      email?: string;
+      role?: string;
+    };
+
+    if (!parsed.email || !parsed.role) {
+      return null;
+    }
+
+    return {
+      id: parsed.id ?? '',
+      username: parsed.username ?? parsed.email.split('@')[0],
+      email: parsed.email,
+      role: parsed.role,
+    };
   } catch {
     return null;
   }

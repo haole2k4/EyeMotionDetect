@@ -24,6 +24,7 @@ import { useAuthStore } from '@/store/auth';
 
 interface DashboardUser {
   id: string;
+  username: string;
   email: string;
   role: string;
   calibrated: boolean;
@@ -31,12 +32,14 @@ interface DashboardUser {
 }
 
 const createUserSchema = z.object({
+  username: z.string().min(3, 'Ten dang nhap toi thieu 3 ky tu').max(50, 'Ten dang nhap toi da 50 ky tu'),
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu tối thiểu 6 ký tự'),
   role: z.enum(['admin', 'user']),
 });
 
 const editUserSchema = z.object({
+  username: z.string().min(3, 'Ten dang nhap toi thieu 3 ky tu').max(50, 'Ten dang nhap toi da 50 ky tu'),
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu mới tối thiểu 6 ký tự').or(z.literal('')),
   role: z.enum(['admin', 'user']),
@@ -90,6 +93,7 @@ export default function UsersManagement() {
   const createForm = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserSchema),
     defaultValues: {
+      username: '',
       email: '',
       password: '',
       role: 'user',
@@ -99,6 +103,7 @@ export default function UsersManagement() {
   const editForm = useForm<EditUserFormValues>({
     resolver: zodResolver(editUserSchema),
     defaultValues: {
+      username: '',
       email: '',
       password: '',
       role: 'user',
@@ -127,6 +132,7 @@ export default function UsersManagement() {
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setIsCreateDialogOpen(false);
       createForm.reset({
+        username: '',
         email: '',
         password: '',
         role: 'user',
@@ -147,10 +153,12 @@ export default function UsersManagement() {
       payload: EditUserFormValues;
     }) => {
       const updatePayload: {
+        username: string;
         email: string;
         role: 'admin' | 'user';
         password?: string;
       } = {
+        username: payload.username,
         email: payload.email,
         role: payload.role,
       };
@@ -167,6 +175,7 @@ export default function UsersManagement() {
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setEditingUser(null);
       editForm.reset({
+        username: '',
         email: '',
         password: '',
         role: 'user',
@@ -200,7 +209,11 @@ export default function UsersManagement() {
       return users;
     }
 
-    return users.filter((user) => user.email.toLowerCase().includes(normalizedKeyword));
+    return users.filter((user) => {
+      const byEmail = user.email.toLowerCase().includes(normalizedKeyword);
+      const byUsername = user.username.toLowerCase().includes(normalizedKeyword);
+      return byEmail || byUsername;
+    });
   }, [usersQuery.data, searchValue]);
 
   const totalUsers = usersQuery.data?.length ?? 0;
@@ -209,6 +222,7 @@ export default function UsersManagement() {
     setErrorMessage(null);
     setEditingUser(user);
     editForm.reset({
+      username: user.username,
       email: user.email,
       password: '',
       role: user.role === 'admin' ? 'admin' : 'user',
@@ -285,7 +299,7 @@ export default function UsersManagement() {
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Tìm người dùng theo email"
+            placeholder="Tìm theo tên đăng nhập hoặc email"
             className="h-10 rounded-xl border-gray-200 pl-9"
           />
         </div>
@@ -301,6 +315,7 @@ export default function UsersManagement() {
             <thead className="border-b border-gray-100 bg-gray-50/60 text-gray-500">
               <tr>
                 <th className="px-6 py-4 font-semibold">Email</th>
+                <th className="px-6 py-4 font-semibold">Tên đăng nhập</th>
                 <th className="px-6 py-4 font-semibold">Vai trò</th>
                 <th className="px-6 py-4 font-semibold">Hiệu chuẩn</th>
                 <th className="px-6 py-4 font-semibold">Ngày tham gia</th>
@@ -310,7 +325,7 @@ export default function UsersManagement() {
             <tbody className="divide-y divide-gray-50">
               {usersQuery.isPending ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="size-4 animate-spin" />
                       Đang tải danh sách người dùng...
@@ -321,7 +336,7 @@ export default function UsersManagement() {
 
               {usersQuery.isError ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-sm text-rose-600">
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-rose-600">
                     Không thể tải dữ liệu từ server.
                   </td>
                 </tr>
@@ -329,7 +344,7 @@ export default function UsersManagement() {
 
               {usersQuery.isSuccess && filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
                     Không tìm thấy người dùng phù hợp.
                   </td>
                 </tr>
@@ -345,6 +360,7 @@ export default function UsersManagement() {
                       className="hover:bg-blue-50/30"
                     >
                       <td className="px-6 py-4 font-semibold text-gray-800">{user.email}</td>
+                      <td className="px-6 py-4 text-gray-700">{user.username}</td>
                       <td className="px-6 py-4">
                         <span
                           className={`rounded-md px-3 py-1 text-xs font-semibold ${
@@ -418,6 +434,22 @@ export default function UsersManagement() {
 
           <form onSubmit={createForm.handleSubmit(handleCreateUser)} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="create-user-username">Tên đăng nhập</Label>
+              <Input
+                id="create-user-username"
+                type="text"
+                placeholder="vd: test_user_01"
+                {...createForm.register('username')}
+                className={createForm.formState.errors.username ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+              />
+              {createForm.formState.errors.username ? (
+                <p className="text-sm font-medium text-rose-600">
+                  {createForm.formState.errors.username.message}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="create-user-email">Email</Label>
               <Input
                 id="create-user-email"
@@ -490,6 +522,7 @@ export default function UsersManagement() {
           if (!open) {
             setEditingUser(null);
             editForm.reset({
+              username: '',
               email: '',
               password: '',
               role: 'user',
@@ -506,6 +539,21 @@ export default function UsersManagement() {
           </DialogHeader>
 
           <form onSubmit={editForm.handleSubmit(handleUpdateUser)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-user-username">Tên đăng nhập</Label>
+              <Input
+                id="edit-user-username"
+                type="text"
+                {...editForm.register('username')}
+                className={editForm.formState.errors.username ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+              />
+              {editForm.formState.errors.username ? (
+                <p className="text-sm font-medium text-rose-600">
+                  {editForm.formState.errors.username.message}
+                </p>
+              ) : null}
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="edit-user-email">Email</Label>
               <Input
