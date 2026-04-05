@@ -33,7 +33,11 @@ export function LoginForm() {
     },
     onSuccess: (data) => {
       setAuth(data.access_token, data.user);
-      router.push('/admin');
+      if (data.user.role === 'admin') {
+        router.push('/admin');
+      } else {
+        router.push('/user/dashboard');
+      }
     },
     onError: (err: unknown) => {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -67,9 +71,9 @@ export function LoginForm() {
     >
       <Card className="w-full max-w-md shadow-lg border-t-4 border-t-blue-500">
         <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold tracking-tight">Admin Login</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">Login</CardTitle>
           <CardDescription className="text-gray-500">
-            Sign in to access the testing dashboard
+            Sign in to access your dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -84,7 +88,7 @@ export function LoginForm() {
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@eyemotiondetect.dev"
+                placeholder="email@example.com"
                 {...register('email')}
                 className={errors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}
               />

@@ -20,7 +20,7 @@ export default function Home() {
       return;
     }
 
-    router.replace("/gaze");
+    router.replace("/user/dashboard");
   }, [router, token, user]);
 
   return <div className="flex h-screen items-center justify-center bg-gray-50">Dang chuyen huong...</div>;

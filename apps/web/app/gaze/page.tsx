@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { CalibrationPanel } from "@/components/gaze/CalibrationPanel";
 import { useGaze } from "@/components/gaze/GazeProvider";
 import { getCalibrationLocally } from "@/lib/gaze/storage";
@@ -10,6 +12,7 @@ function toPolyline(points: [number, number][]): string {
 }
 
 export default function GazePage() {
+  const router = useRouter();
   const { stats, startPipeline, stopPipeline, setModel } = useGaze();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -94,7 +97,18 @@ export default function GazePage() {
 
   return (
     <main className="min-h-screen bg-neutral-950 p-6 text-neutral-100 md:p-10">
-      <section className="mx-auto max-w-4xl space-y-6">
+      {/* Navbar Overlays */}
+      <div className="absolute top-4 left-4 z-50">
+        <button 
+          onClick={() => router.back()} 
+          className="flex items-center gap-2 px-4 py-2 bg-neutral-800 text-white rounded-full hover:bg-neutral-700 transition"
+        >
+          <ArrowLeft size={18} />
+          <span>Quay lại</span>
+        </button>
+      </div>
+
+      <section className="mx-auto max-w-4xl space-y-6 mt-12">
         <h1 className="text-3xl font-semibold md:text-4xl">EyeMotionDetect Phase 6</h1>
         <p className="text-neutral-300">
           Mode hien tai: <strong>{activeMode}</strong>. Bam Start de bat camera va dieu khien con tro gaze.

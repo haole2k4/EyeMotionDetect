@@ -12,6 +12,8 @@ import { User } from './users/user.entity';
 import { GazeWeights } from './weights/weights.entity';
 import { Question } from './questions/question.entity';
 import { Exam } from './exams/entities/exam.entity';
+import { ExamSession } from './exams/entities/exam-session.entity';
+import { UserAnswer } from './exams/entities/user-answer.entity';
 
 @Module({
   imports: [
@@ -23,7 +25,7 @@ import { Exam } from './exams/entities/exam.entity';
       username: process.env.DB_USERNAME || 'gaze',
       password: process.env.DB_PASSWORD || 'gaze_dev_pass',
       database: process.env.DB_DATABASE || 'gaze_dev',
-      entities: [User, GazeWeights, Question, Exam],
+      entities: [User, GazeWeights, Question, Exam, ExamSession, UserAnswer],
       synchronize: false,
     }),
     UsersModule,

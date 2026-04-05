@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { Exam } from './entities/exam.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('exams')
 export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
@@ -16,9 +18,43 @@ export class ExamsController {
     return this.examsService.findAll();
   }
 
+  @Get('user/assigned')
+  findAssignedExams(@Request() req: any) {
+    return this.examsService.findAssignedExams(req.user.id);
+  }
+
+  @Get('sessions/my')
+  getMySessions(@Request() req: any) {
+    return this.examsService.getMySessions(req.user.id);
+  }
+
+  @Get('sessions/:sessionId/active')
+  getActiveSession(@Param('sessionId') sessionId: string, @Request() req: any) {
+    return this.examsService.getSession(sessionId, req.user.id);
+  }
+
+  @Post('sessions/:sessionId/answer')
+  submitAnswer(
+    @Param('sessionId') sessionId: string,
+    @Body() body: { questionId: string; selectedOption: string; dwellTimeMs: number },
+    @Request() req: any,
+  ) {
+    return this.examsService.submitAnswer(sessionId, req.user.id, body.questionId, body.selectedOption, body.dwellTimeMs);
+  }
+
+  @Post('sessions/:sessionId/finish')
+  finishExam(@Param('sessionId') sessionId: string, @Request() req: any) {
+    return this.examsService.finishExam(sessionId, req.user.id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.examsService.findOne(id);
+  }
+
+  @Post(':id/start')
+  startExam(@Param('id') examId: string, @Request() req: any) {
+    return this.examsService.startExam(examId, req.user.id);
   }
 
   @Patch(':id')

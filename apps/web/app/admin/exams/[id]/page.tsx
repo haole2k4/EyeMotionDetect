@@ -51,6 +51,7 @@ export default function ExamDetailsPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
 
   // Queries
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: exam, isLoading: isLoadingExam } = useQuery<any>({
     queryKey: ['exams', id],
     queryFn: async () => {

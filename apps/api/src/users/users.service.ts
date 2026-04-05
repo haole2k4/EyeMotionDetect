@@ -59,8 +59,16 @@ export class UsersService implements OnModuleInit {
   }
 
   async findById(id: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { id } });
+    return this.usersRepository.findOneBy({ id });
   }
+
+  async findByIdWithCalibration(id: string): Promise<User | null> {
+    return this.usersRepository.findOne({
+      where: { id },
+      relations: ['gazeWeights'],
+    });
+  }
+
 
   async findAllWithCalibration(): Promise<any[]> {
     const users = await this.usersRepository.find({ relations: ['gazeWeights'] });

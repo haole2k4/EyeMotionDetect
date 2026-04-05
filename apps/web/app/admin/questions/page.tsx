@@ -146,7 +146,6 @@ export default function Questions() {
   const option1 = watch('options.1');
   const option2 = watch('options.2');
   const option3 = watch('options.3');
-  const currentOptions = [option0 || '', option1 || '', option2 || '', option3 || ''];
   
   const currentAnswer = watch('correctAnswer');
 

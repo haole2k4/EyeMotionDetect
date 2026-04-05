@@ -4,6 +4,8 @@ import { Repository, In } from 'typeorm';
 import { Exam } from './entities/exam.entity';
 import { Question } from '../questions/question.entity';
 import { User } from '../users/user.entity';
+import { ExamSession, ExamStatus } from './entities/exam-session.entity';
+import { UserAnswer } from './entities/user-answer.entity';
 
 @Injectable()
 export class ExamsService {
@@ -14,6 +16,10 @@ export class ExamsService {
     private readonly questionRepo: Repository<Question>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(ExamSession)
+    private readonly sessionRepo: Repository<ExamSession>,
+    @InjectRepository(UserAnswer)
+    private readonly answerRepo: Repository<UserAnswer>,
   ) {}
 
   async create(data: Partial<Exam>) {
@@ -67,5 +73,101 @@ export class ExamsService {
       exam.assignedUsers = users;
     }
     return this.examRepo.save(exam);
+  }
+
+  // --- USER API ---
+  async findAssignedExams(userId: string) {
+    return this.examRepo.find({
+      where: {
+        assignedUsers: { id: userId },
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async getMySessions(userId: string) {
+    return this.sessionRepo.find({
+      where: { user: { id: userId } },
+      relations: ['exam'],
+      order: { startTime: 'DESC' },
+    });
+  }
+
+  async getSession(sessionId: string, userId: string) {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId, user: { id: userId } },
+      relations: ['exam', 'exam.questions', 'answers', 'answers.question'],
+    });
+    if (!session) throw new NotFoundException('Không tìm thấy phiên làm bài');
+    return session;
+  }
+
+  async startExam(examId: string, userId: string) {
+    const exam = await this.findOne(examId);
+
+    // Check if user already has an IN_PROGRESS session
+    let session = await this.sessionRepo.findOne({
+      where: { exam: { id: examId }, user: { id: userId }, status: ExamStatus.IN_PROGRESS },
+      relations: ['answers', 'exam', 'exam.questions'],
+    });
+
+    if (!session) {
+      session = this.sessionRepo.create({
+        exam: { id: examId },
+        user: { id: userId },
+        status: ExamStatus.IN_PROGRESS,
+        score: 0,
+        startTime: new Date(),
+      });
+      await this.sessionRepo.save(session);
+      // Re-fetch to get relations
+      session = await this.getSession(session.id, userId);
+    }
+    return session;
+  }
+
+  async submitAnswer(sessionId: string, userId: string, questionId: string, selectedOption: string, dwellTimeMs: number) {
+    const session = await this.getSession(sessionId, userId);
+    if (session.status !== ExamStatus.IN_PROGRESS) {
+      throw new Error('Phiên làm bài đã kết thúc');
+    }
+
+    const question = session.exam.questions.find(q => q.id === questionId);
+    if (!question) throw new NotFoundException('Câu hỏi không thuộc bài thi này');
+
+    const isCorrect = question.correctAnswer === selectedOption;
+
+    let answer = session.answers?.find(a => a.question.id === questionId);
+    if (answer) {
+      answer.selectedOption = selectedOption;
+      answer.isCorrect = isCorrect;
+      answer.dwellTimeMs = dwellTimeMs;
+    } else {
+      answer = this.answerRepo.create({
+        session: { id: sessionId },
+        question: { id: questionId },
+        selectedOption,
+        isCorrect,
+        dwellTimeMs,
+      });
+    }
+
+    await this.answerRepo.save(answer);
+    return answer;
+  }
+
+  async finishExam(sessionId: string, userId: string) {
+    const session = await this.getSession(sessionId, userId);
+    if (session.status === ExamStatus.COMPLETED) return session;
+
+    session.endTime = new Date();
+    session.status = ExamStatus.COMPLETED;
+
+    const totalQuestions = session.exam.questions.length;
+    const correctAnswers = session.answers?.filter(a => a.isCorrect).length || 0;
+
+    session.score = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
+
+    return this.sessionRepo.save(session);
   }
 }

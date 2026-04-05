@@ -8,6 +8,7 @@ import {
   Delete,
   Param,
   BadRequestException,
+  Request,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -45,6 +46,34 @@ export class UsersController {
   @Roles('admin')
   async getAllUsers() {
     return this.usersService.findAllWithCalibration();
+  }
+
+  @Get('me')
+  async getMyProfile(@Request() req: any) {
+    const user = await this.usersService.findByIdWithCalibration(req.user.id);
+    if (!user) throw new BadRequestException('User not found');
+    const { passwordHash, ...result } = user;
+    return result;
+  }
+
+  @Put('me')
+  async updateMyProfile(@Request() req: any, @Body() body: UpdateUserBody) {
+    if (!body.username && !body.email && !body.password) {
+      throw new BadRequestException('At least one field is required');
+    }
+
+    const updateData: { username?: string; email?: string; passwordHash?: string } = {};
+
+    if (body.username) updateData.username = body.username;
+    if (body.email) updateData.email = body.email;
+    if (body.password) {
+      const salt = await bcrypt.genSalt();
+      updateData.passwordHash = await bcrypt.hash(body.password, salt);
+    }
+    const user = await this.usersService.update(req.user.id, updateData);
+    if (!user) throw new BadRequestException('User not found');
+    const { passwordHash, ...result } = user;
+    return result;
   }
 
   @Post()
