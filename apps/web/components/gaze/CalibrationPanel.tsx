@@ -29,8 +29,13 @@ interface CalibrationPoint {
 
 const CALIBRATION_POINTS: CalibrationPoint[] = [
   { x: 0.15, y: 0.15 }, // Top-Left (A)
+  { x: 0.50, y: 0.15 }, // Top-Center (Back)
   { x: 0.85, y: 0.15 }, // Top-Right (B)
+  { x: 0.15, y: 0.50 }, // Mid-Left (Prev)
+  { x: 0.50, y: 0.50 }, // Center
+  { x: 0.85, y: 0.50 }, // Mid-Right (Next)
   { x: 0.15, y: 0.85 }, // Bottom-Left (C)
+  { x: 0.50, y: 0.85 }, // Bottom-Center (Submit)
   { x: 0.85, y: 0.85 }, // Bottom-Right (D)
 ];
 

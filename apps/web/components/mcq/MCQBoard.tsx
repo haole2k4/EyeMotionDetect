@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useState } from 'react';
-import { useGaze } from '../gaze/GazeProvider';
+import { GazeButton } from '../ui/GazeButton';
 
 interface MCQBoardProps {
   question: string;
@@ -11,61 +11,121 @@ interface MCQBoardProps {
     D: string;
   };
   onAnswerSelected?: (answer: 'A' | 'B' | 'C' | 'D') => void;
+  onBack?: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  onSubmit?: () => void;
 }
 
-export function MCQBoard({ question, options, onAnswerSelected }: MCQBoardProps) {
-  const { stats } = useGaze();
+export function MCQBoard({ question, options, onAnswerSelected, onBack, onPrev, onNext, onSubmit }: MCQBoardProps) {
   const [selected, setSelected] = useState<string | null>(null);
 
-  const handleClick = useCallback((id: 'A' | 'B' | 'C' | 'D') => {
+  const handleAnswerClick = useCallback((id: 'A' | 'B' | 'C' | 'D') => {
     setSelected(id);
     if (onAnswerSelected) {
       onAnswerSelected(id);
     }
   }, [onAnswerSelected]);
 
-  // Read state directly from Gaze Context
-  const region = stats?.currentRegion || 'DEADZONE';
-  const progress = stats?.dwellProgress || 0;
-
-  const renderButton = (id: 'A' | 'B' | 'C' | 'D', text: string, bgClass: string, posClass: string) => {
-    const isGazing = region === id;
-    const progressPerc = isGazing ? progress * 100 : 0;
-    
-    return (
-      <div 
-        className={`absolute ${posClass} w-64 h-64 ${bgClass} rounded-2xl shadow-xl flex items-center justify-center cursor-pointer overflow-hidden border-4 ${selected === id ? 'border-yellow-400' : 'border-transparent'} hover:border-white transition-colors group`}
-        onClick={() => handleClick(id)}
-      >
-        <span className="text-4xl font-bold text-white z-10">{id}: {text}</span>
-        
-        {/* Progress Background */}
-        <div 
-          className="absolute bottom-0 left-0 w-full bg-black/30 transition-all duration-100 ease-linear"
-          style={{ height: `${progressPerc}%` }}
-        />
-      </div>
-    );
-  };
-
   return (
-    <div className="relative w-full h-screen bg-gray-900 overflow-hidden select-none">
-      {/* Question Text */}
-      <div className="absolute top-10 left-1/2 -translate-x-1/2 w-1/2 p-6 bg-gray-800 rounded-xl shadow-lg border border-gray-700 text-center z-10">
-        <h1 className="text-3xl text-white font-bold">{question}</h1>
+    <div className="grid grid-cols-3 grid-rows-3 h-screen w-screen gap-6 p-6 bg-gray-900 overflow-hidden select-none">
+      
+      {/* Row 1 */}
+      {/* [0,0] Top-Left: Option A */}
+      <GazeButton 
+        id="A" 
+        onClick={() => handleAnswerClick('A')} 
+        isActive={selected === 'A'}
+        className="col-start-1 row-start-1 bg-blue-600/80 rounded-3xl shadow-xl hover:shadow-2xl hover:scale-105 transition-transform"
+      >
+        <span className="text-5xl font-bold text-white uppercase tracking-wider">A</span>
+        <span className="text-2xl mt-4 font-medium text-blue-100">{options.A}</span>
+      </GazeButton>
+
+      {/* [0,1] Top-Center: Back */}
+      <div className="col-start-2 row-start-1 flex justify-center items-start">
+         <GazeButton 
+          id="Back" 
+          onClick={onBack}
+          className="w-48 h-20 bg-gray-700/80 rounded-b-3xl shadow-lg border-t-0"
+         >
+           <span className="text-xl font-bold text-white">Quay lại</span>
+         </GazeButton>
       </div>
 
-      {/* Deadzone Visual (Optional, can be removed in production) */}
-      <div className="absolute inset-0 pointer-events-none hidden md:flex items-center justify-center">
-        <div className="w-[40%] h-[40%] border-4 border-dashed border-gray-600/30 rounded-full flex items-center justify-center">
-          <span className="text-gray-500/50 font-bold uppercase tracking-widest text-xl">Deadzones</span>
-        </div>
+      {/* [0,2] Top-Right: Option B */}
+      <GazeButton 
+        id="B" 
+        onClick={() => handleAnswerClick('B')} 
+        isActive={selected === 'B'}
+        className="col-start-3 row-start-1 bg-purple-600/80 rounded-3xl shadow-xl hover:shadow-2xl hover:scale-105 transition-transform"
+      >
+        <span className="text-5xl font-bold text-white uppercase tracking-wider">B</span>
+        <span className="text-2xl mt-4 font-medium text-purple-100">{options.B}</span>
+      </GazeButton>
+
+      {/* Row 2 */}
+      {/* [1,0] Mid-Left: Prev */}
+      <div className="col-start-1 row-start-2 flex justify-start items-center">
+        <GazeButton 
+          id="Prev" 
+          onClick={onPrev}
+          className="w-20 h-48 bg-gray-700/80 rounded-r-3xl shadow-lg border-l-0"
+        >
+          <span className="text-xl font-bold text-white -rotate-90 whitespace-nowrap">Câu trước</span>
+        </GazeButton>
       </div>
 
-      {renderButton('A', options.A, 'bg-blue-600/80', 'top-10 left-10')}
-      {renderButton('B', options.B, 'bg-purple-600/80', 'top-10 right-10')}
-      {renderButton('C', options.C, 'bg-emerald-600/80', 'bottom-10 left-10')}
-      {renderButton('D', options.D, 'bg-rose-600/80', 'bottom-10 right-10')}
+      {/* [1,1] Center: Question */}
+      <div className="col-start-2 row-start-2 flex items-center justify-center p-8 bg-gray-800 rounded-3xl shadow-2xl border border-gray-700/50">
+        <h1 className="text-4xl text-white font-bold text-center leading-tight">{question}</h1>
+      </div>
+
+      {/* [1,2] Mid-Right: Next */}
+      <div className="col-start-3 row-start-2 flex justify-end items-center">
+        <GazeButton 
+          id="Next" 
+          onClick={onNext}
+          className="w-20 h-48 bg-gray-700/80 rounded-l-3xl shadow-lg border-r-0"
+        >
+          <span className="text-xl font-bold text-white rotate-90 whitespace-nowrap">Câu tiếp</span>
+        </GazeButton>
+      </div>
+
+      {/* Row 3 */}
+      {/* [2,0] Bottom-Left: Option C */}
+      <GazeButton 
+        id="C" 
+        onClick={() => handleAnswerClick('C')} 
+        isActive={selected === 'C'}
+        className="col-start-1 row-start-3 bg-emerald-600/80 rounded-3xl shadow-xl mb-8 hover:shadow-2xl hover:scale-105 transition-transform"
+      >
+        <span className="text-5xl font-bold text-white uppercase tracking-wider">C</span>
+        <span className="text-2xl mt-4 font-medium text-emerald-100">{options.C}</span>
+      </GazeButton>
+
+      {/* [2,1] Bottom-Center: Submit */}
+      <div className="col-start-2 row-start-3 flex justify-center items-end mb-8">
+        <GazeButton 
+          id="Submit" 
+          onClick={onSubmit}
+          className="w-64 h-24 bg-rose-600/90 rounded-t-3xl rounded-b-xl shadow-2xl shadow-rose-900/50 border-b-8 border-rose-800"
+        >
+          <span className="text-2xl font-black text-white uppercase tracking-widest">Nộp bài</span>
+        </GazeButton>
+      </div>
+
+      {/* [2,2] Bottom-Right: Option D */}
+      <GazeButton 
+        id="D" 
+        onClick={() => handleAnswerClick('D')} 
+        isActive={selected === 'D'}
+        className="col-start-3 row-start-3 bg-amber-600/80 rounded-3xl shadow-xl mb-8 hover:shadow-2xl hover:scale-105 transition-transform"
+      >
+        <span className="text-5xl font-bold text-white uppercase tracking-wider">D</span>
+        <span className="text-2xl mt-4 font-medium text-amber-100">{options.D}</span>
+      </GazeButton>
+
     </div>
   );
 }
