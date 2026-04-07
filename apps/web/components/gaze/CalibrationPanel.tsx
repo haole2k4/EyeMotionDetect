@@ -27,16 +27,20 @@ interface CalibrationPoint {
   y: number;
 }
 
+const POS_1 = 1 / 6; // 0.1666...
+const POS_2 = 1 / 2; // 0.5
+const POS_3 = 5 / 6; // 0.8333...
+
 const CALIBRATION_POINTS: CalibrationPoint[] = [
-  { x: 0.15, y: 0.15 }, // Top-Left (A)
-  { x: 0.50, y: 0.15 }, // Top-Center (Back)
-  { x: 0.85, y: 0.15 }, // Top-Right (B)
-  { x: 0.15, y: 0.50 }, // Mid-Left (Prev)
-  { x: 0.50, y: 0.50 }, // Center
-  { x: 0.85, y: 0.50 }, // Mid-Right (Next)
-  { x: 0.15, y: 0.85 }, // Bottom-Left (C)
-  { x: 0.50, y: 0.85 }, // Bottom-Center (Submit)
-  { x: 0.85, y: 0.85 }, // Bottom-Right (D)
+  { x: POS_1, y: POS_1 }, // Row 0, Col 0
+  { x: POS_2, y: POS_1 }, // Row 0, Col 1
+  { x: POS_3, y: POS_1 }, // Row 0, Col 2
+  { x: POS_1, y: POS_2 }, // Row 1, Col 0
+  { x: POS_2, y: POS_2 }, // Row 1, Col 1
+  { x: POS_3, y: POS_2 }, // Row 1, Col 2
+  { x: POS_1, y: POS_3 }, // Row 2, Col 0
+  { x: POS_2, y: POS_3 }, // Row 2, Col 1
+  { x: POS_3, y: POS_3 }, // Row 2, Col 2
 ];
 
 const SAMPLE_INTERVAL_MS = 16;

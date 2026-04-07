@@ -62,7 +62,11 @@ export class UsersController {
       throw new BadRequestException('At least one field is required');
     }
 
-    const updateData: { username?: string; email?: string; passwordHash?: string } = {};
+    const updateData: {
+      username?: string;
+      email?: string;
+      passwordHash?: string;
+    } = {};
 
     if (body.username) updateData.username = body.username;
     if (body.email) updateData.email = body.email;
@@ -80,7 +84,9 @@ export class UsersController {
   @Roles('admin')
   async createUser(@Body() body: CreateUserBody) {
     if (!body.username || !body.email || !body.password) {
-      throw new BadRequestException('Username, email and password are required');
+      throw new BadRequestException(
+        'Username, email and password are required',
+      );
     }
 
     this.ensureValidRole(body.role);
@@ -93,7 +99,12 @@ export class UsersController {
       passwordHash,
       role: body.role ?? 'user',
     });
-    return { id: user.id, username: user.username, email: user.email, role: user.role };
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+    };
   }
 
   @Put(':id')
@@ -105,7 +116,12 @@ export class UsersController {
 
     this.ensureValidRole(body.role);
 
-    const updateData: { username?: string; email?: string; role?: UserRole; passwordHash?: string } = {};
+    const updateData: {
+      username?: string;
+      email?: string;
+      role?: UserRole;
+      passwordHash?: string;
+    } = {};
 
     if (body.username) {
       updateData.username = body.username;
@@ -125,7 +141,12 @@ export class UsersController {
     }
 
     const user = await this.usersService.update(id, updateData);
-    return { id: user.id, username: user.username, email: user.email, role: user.role };
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+    };
   }
 
   @Delete(':id')

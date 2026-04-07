@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { Exam } from './entities/exam.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -36,10 +46,17 @@ export class ExamsController {
   @Post('sessions/:sessionId/answer')
   submitAnswer(
     @Param('sessionId') sessionId: string,
-    @Body() body: { questionId: string; selectedOption: string; dwellTimeMs: number },
+    @Body()
+    body: { questionId: string; selectedOption: string; dwellTimeMs: number },
     @Request() req: any,
   ) {
-    return this.examsService.submitAnswer(sessionId, req.user.id, body.questionId, body.selectedOption, body.dwellTimeMs);
+    return this.examsService.submitAnswer(
+      sessionId,
+      req.user.id,
+      body.questionId,
+      body.selectedOption,
+      body.dwellTimeMs,
+    );
   }
 
   @Post('sessions/:sessionId/finish')
@@ -68,7 +85,10 @@ export class ExamsController {
   }
 
   @Post(':id/questions')
-  assignQuestions(@Param('id') id: string, @Body() body: { questionIds: string[] }) {
+  assignQuestions(
+    @Param('id') id: string,
+    @Body() body: { questionIds: string[] },
+  ) {
     return this.examsService.assignQuestions(id, body.questionIds);
   }
 

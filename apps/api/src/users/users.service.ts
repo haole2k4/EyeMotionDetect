@@ -23,18 +23,18 @@ export class UsersService implements OnModuleInit {
     const adminUsername = 'admin';
     const adminEmail = 'admin@eyemotiondetect.dev';
     const existingAdmin = await this.findByEmail(adminEmail);
-    
+
     if (!existingAdmin) {
       const salt = await bcrypt.genSalt();
       const passwordHash = await bcrypt.hash('admin', salt);
-      
+
       const adminUser = this.usersRepository.create({
         username: adminUsername,
         email: adminEmail,
         passwordHash,
-        role: 'admin'
+        role: 'admin',
       });
-      
+
       await this.usersRepository.save(adminUser);
       this.logger.log('Default admin user created.');
       return;
@@ -69,10 +69,11 @@ export class UsersService implements OnModuleInit {
     });
   }
 
-
   async findAllWithCalibration(): Promise<any[]> {
-    const users = await this.usersRepository.find({ relations: ['gazeWeights'] });
-    return users.map(user => ({
+    const users = await this.usersRepository.find({
+      relations: ['gazeWeights'],
+    });
+    return users.map((user) => ({
       id: user.id,
       username: user.username,
       email: user.email,

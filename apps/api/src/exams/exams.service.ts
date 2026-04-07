@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Exam } from './entities/exam.entity';
@@ -103,11 +107,15 @@ export class ExamsService {
   }
 
   async startExam(examId: string, userId: string) {
-    const exam = await this.findOne(examId);
+    await this.findOne(examId);
 
     // Check if user already has an IN_PROGRESS session
     let session = await this.sessionRepo.findOne({
-      where: { exam: { id: examId }, user: { id: userId }, status: ExamStatus.IN_PROGRESS },
+      where: {
+        exam: { id: examId },
+        user: { id: userId },
+        status: ExamStatus.IN_PROGRESS,
+      },
       relations: ['answers', 'exam', 'exam.questions'],
     });
 
@@ -126,18 +134,25 @@ export class ExamsService {
     return session;
   }
 
-  async submitAnswer(sessionId: string, userId: string, questionId: string, selectedOption: string, dwellTimeMs: number) {
+  async submitAnswer(
+    sessionId: string,
+    userId: string,
+    questionId: string,
+    selectedOption: string,
+    dwellTimeMs: number,
+  ) {
     const session = await this.getSession(sessionId, userId);
     if (session.status !== ExamStatus.IN_PROGRESS) {
-      throw new Error('Phiên làm bài đã kết thúc');
+      throw new BadRequestException('Phiên làm bài đã kết thúc');
     }
 
-    const question = session.exam.questions.find(q => q.id === questionId);
-    if (!question) throw new NotFoundException('Câu hỏi không thuộc bài thi này');
+    const question = session.exam.questions.find((q) => q.id === questionId);
+    if (!question)
+      throw new NotFoundException('Câu hỏi không thuộc bài thi này');
 
     const isCorrect = question.correctAnswer === selectedOption;
 
-    let answer = session.answers?.find(a => a.question.id === questionId);
+    let answer = session.answers?.find((a) => a.question?.id === questionId);
     if (answer) {
       answer.selectedOption = selectedOption;
       answer.isCorrect = isCorrect;
@@ -160,14 +175,24 @@ export class ExamsService {
     const session = await this.getSession(sessionId, userId);
     if (session.status === ExamStatus.COMPLETED) return session;
 
-    session.endTime = new Date();
-    session.status = ExamStatus.COMPLETED;
-
     const totalQuestions = session.exam.questions.length;
-    const correctAnswers = session.answers?.filter(a => a.isCorrect).length || 0;
+    const correctAnswers =
+      session.answers?.reduce(
+        (count, answer) => count + (answer.isCorrect ? 1 : 0),
+        0,
+      ) || 0;
 
-    session.score = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
+    const score =
+      totalQuestions > 0
+        ? Math.round((correctAnswers / totalQuestions) * 100)
+        : 0;
 
-    return this.sessionRepo.save(session);
+    await this.sessionRepo.update(sessionId, {
+      endTime: new Date(),
+      status: ExamStatus.COMPLETED,
+      score,
+    });
+
+    return this.getSession(sessionId, userId);
   }
 }

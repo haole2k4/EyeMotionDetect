@@ -14,7 +14,9 @@ export class UserAnswer {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @ManyToOne(() => ExamSession, (session) => session.answers, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ExamSession, (session) => session.answers, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'session_id' })
   session!: ExamSession;
 
@@ -28,7 +30,11 @@ export class UserAnswer {
   @Column({ type: 'boolean', default: false })
   isCorrect!: boolean;
 
-  @Column({ type: 'int', nullable: true, comment: 'Time spent looking at this answer/question in ms' })
+  @Column({
+    type: 'int',
+    nullable: true,
+    comment: 'Time spent looking at this answer/question in ms',
+  })
   dwellTimeMs?: number;
 
   @CreateDateColumn()

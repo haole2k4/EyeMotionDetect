@@ -10,6 +10,7 @@ import { WebCursorController } from '../../lib/gaze/mouse-controller';
 import { GazeSmoother } from '../../lib/gaze/smoother';
 import type { GazeFeatures } from '../../lib/gaze/types';
 import type { GazeWorker } from '../../workers/gaze.worker';
+import { getGridCell, getActionFromGrid } from '../../lib/gaze/grid-mapper';
 
 type Point2D = [number, number];
 
@@ -26,6 +27,9 @@ const LEFT_IRIS = [468, 469, 470, 471, 472] as const;
 const RIGHT_IRIS = [473, 474, 475, 476, 477] as const;
 const RAW_GAZE_MAX_STEP_PX = 120;
 const IRIS_AMPLIFICATION = 1.45;
+const DEFAULT_DWELL_REQUIREMENT_MS = 700;
+const SUBMIT_DWELL_REQUIREMENT_MS = 1200;
+const STATS_PUBLISH_INTERVAL_MS = 80;
 
 function toPoints(lm: NormalizedLandmark[], indices: readonly number[]): Point2D[] {
   return indices.map((index) => [lm[index].x, lm[index].y]);
@@ -53,7 +57,7 @@ function stabilizeRawGaze(nextRaw: Point2D, prevRaw: Point2D, hasPrev: boolean, 
   return [prevRaw[0] + dx * ratio, prevRaw[1] + dy * ratio];
 }
 
-export type RegionId = 'A' | 'B' | 'C' | 'D' | 'DEADZONE';
+export type RegionId = 'A' | 'B' | 'C' | 'D' | 'DEADZONE' | 'PREV' | 'NEXT' | 'SUBMIT' | 'SAFE_MARGIN';
 
 interface DebugStats {
   fps: number;
@@ -130,8 +134,8 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
   const regionRef = useRef<RegionId>('DEADZONE');
   const dwellStartRef = useRef<number | null>(null);
-  const DWELL_TIME_MS = 2000; // 2 seconds
   const currentDwellProgressRef = useRef<number>(0);
+  const lastStatsPublishRef = useRef<number>(0);
 
     const getEarThreshold = useCallback(() => {
       return earDetectorRef.current.getThreshold();
@@ -288,35 +292,27 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       handleBlinkAction(blinkState, smoothed.x, smoothed.y);
     }
 
-    // Calculate Region and Dwell-time
-    const px = smoothed.x / w;
-    const py = smoothed.y / h;
-    let newRegion: RegionId = 'DEADZONE';
+    // Calculate Region and Dwell-time using new Grid logic
+    const { row, col } = getGridCell(smoothed.x, smoothed.y, w, h);
+    const newRegion = getActionFromGrid(row, col) as RegionId;
     
-    const marginX = 0.3; // 30% width for answers
-    const marginY = 0.3; // 30% height for answers
+    // Dynamic dwell time per region
+    let currentDwellRequirement = DEFAULT_DWELL_REQUIREMENT_MS;
+    if (newRegion === 'SUBMIT') currentDwellRequirement = SUBMIT_DWELL_REQUIREMENT_MS;
     
-    if (px < marginX && py < marginY) {
-      newRegion = 'A';
-    } else if (px > 1 - marginX && py < marginY) {
-      newRegion = 'B';
-    } else if (px < marginX && py > 1 - marginY) {
-      newRegion = 'C';
-    } else if (px > 1 - marginX && py > 1 - marginY) {
-      newRegion = 'D';
-    }
+    const isSafeZone = (newRegion === 'DEADZONE' || newRegion === 'SAFE_MARGIN');
 
     if (newRegion !== regionRef.current) {
       regionRef.current = newRegion;
-      if (newRegion !== 'DEADZONE') {
+      if (!isSafeZone) {
         dwellStartRef.current = performance.now();
       } else {
         dwellStartRef.current = null;
       }
       currentDwellProgressRef.current = 0;
-    } else if (newRegion !== 'DEADZONE' && dwellStartRef.current) {
+    } else if (!isSafeZone && dwellStartRef.current) {
       const elapsedDwell = performance.now() - dwellStartRef.current;
-      currentDwellProgressRef.current = Math.min(elapsedDwell / DWELL_TIME_MS, 1.0);
+      currentDwellProgressRef.current = Math.min(elapsedDwell / currentDwellRequirement, 1.0);
       if (currentDwellProgressRef.current >= 1.0) {
         // Trigger a click!
         console.log(`Dwell click at Region ${newRegion}`);
@@ -339,23 +335,26 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       fpsRef.current = currentFps;
     }
 
-    setStats({
-      fps: currentFps,
-      mediapipeMs: tMediaPipe,
-      inferenceMs,
-      activeModel: activeModelRef.current,
-      rawGaze: activeRawGaze,
-      smoothedGaze: [smoothed.x, smoothed.y],
-      earLeft: features ? features.earLeft : 0,
-      earRight: features ? features.earRight : 0,
-      blinkState,
-      dragEnabled: isDraggingRef.current,
-      faceCount,
-      singleFaceReady,
-      eyeOverlay,
-      currentRegion: regionRef.current,
-      dwellProgress: currentDwellProgressRef.current
-    });
+    if (now - lastStatsPublishRef.current >= STATS_PUBLISH_INTERVAL_MS) {
+      setStats({
+        fps: currentFps,
+        mediapipeMs: tMediaPipe,
+        inferenceMs,
+        activeModel: activeModelRef.current,
+        rawGaze: activeRawGaze,
+        smoothedGaze: [smoothed.x, smoothed.y],
+        earLeft: features ? features.earLeft : 0,
+        earRight: features ? features.earRight : 0,
+        blinkState,
+        dragEnabled: isDraggingRef.current,
+        faceCount,
+        singleFaceReady,
+        eyeOverlay,
+        currentRegion: regionRef.current,
+        dwellProgress: currentDwellProgressRef.current,
+      });
+      lastStatsPublishRef.current = now;
+    }
 
     rafRef.current = requestAnimationFrame(loop);
   }, [dispatchMouseEvent, handleBlinkAction]);
@@ -365,6 +364,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     smootherRef.current = new GazeSmoother();
     hasRawGazeRef.current = false;
+    lastStatsPublishRef.current = 0;
     lastRawGazeRef.current = [window.innerWidth / 2, window.innerHeight / 2];
     lastTimeRef.current = performance.now();
     rafRef.current = requestAnimationFrame(loop);

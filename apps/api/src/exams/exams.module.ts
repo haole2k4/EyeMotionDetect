@@ -9,7 +9,9 @@ import { Question } from '../questions/question.entity';
 import { User } from '../users/user.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Exam, ExamSession, UserAnswer, Question, User])],
+  imports: [
+    TypeOrmModule.forFeature([Exam, ExamSession, UserAnswer, Question, User]),
+  ],
   controllers: [ExamsController],
   providers: [ExamsService],
 })

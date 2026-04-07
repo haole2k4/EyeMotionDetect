@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 export enum QuestionDifficulty {
   EASY = 'EASY',
@@ -20,7 +26,11 @@ export class Question {
   @Column({ type: 'varchar' })
   correctAnswer!: string;
 
-  @Column({ type: 'enum', enum: QuestionDifficulty, default: QuestionDifficulty.MEDIUM })
+  @Column({
+    type: 'enum',
+    enum: QuestionDifficulty,
+    default: QuestionDifficulty.MEDIUM,
+  })
   difficulty!: QuestionDifficulty;
 
   @CreateDateColumn()

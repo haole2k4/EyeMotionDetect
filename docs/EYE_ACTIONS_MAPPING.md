@@ -1,50 +1,41 @@
-# Eye Actions Mapping (MCQ Mode)
+# Định tuyến Hành động Mắt (Gaze Actions Mapping)
 
-Tai lieu nay mo ta cach EyeMotionDetect anh xa gaze thanh hanh dong chon dap an trong giao dien MCQ 4 lua chon.
+Tài liệu này mô tả chi tiết cách hệ thống EyeMotionDetect phân giải tọa độ vật lý sang ma trận lưới tĩnh và thực thi các thao tác điều khiển mắt (gaze-based interaction) trên nền tảng lưới 3x3.
 
-## Tong quan xu ly
+## 1. Dòng chảy Toán học (Pipeline)
 
-He thong xu ly theo chuoi:
+1. **Feature Extraction**: Trích xuất các vị trí Iris và Head Pose từ MediaPipe.
+2. **Gaze Prediction**: Chạy tọa độ qua mô hình Học máy (Polynomial Ridge Regression / MLP Matrix Neural Network) để lấy tọa độ màn hình `{ x, y }` dạng pixel.
+3. **Soft Clamping**: Giới hạn dải dữ liệu một cách tuyến tính để tránh nhiễu lọt khỏi vùng màn hình hiển thị.
+4. **Grid Mapping**: Chạy hàm `getGridCell(x, y, w, h)` để phân vùng màn hình vào một ma trận số nguyên `[0..2, 0..2]` theo 3 hàng và 3 cột cân bằng.
+5. **Action Dictionary**: Chuyển đổi tuple `{row, col}` nguyên thành `RegionId` (chuỗi chuỗi hành động).
+6. **Dwell Time Tracker**: Đóng gói `RegionId` vào Tracker 2000ms. Tiến trình gửi sự kiện `click` tự động lên DOM nếu thỏa mãn thời gian.
 
-1. Trich xuat features tu khuon mat va iris.
-2. Model du doan gaze (X, Y).
-3. Bo classifier vung doi (X, Y) thanh region A/B/C/D/DEADZONE.
-4. Bo dwell-time tinh thoi gian gaze lien tuc tren mot region.
-5. Khi dat nguong dwell-time, trigger chon dap an.
+## 2. Bố cục Ma trận Hành động (Grid 3x3)
 
-## Dinh nghia region
+Toàn bộ các Action khả dụng được cứng hóa thành một ma trận như sau:
 
-| Region | Vi tri UI | Hanh dong |
-| :--- | :--- | :--- |
-| A | Goc tren ben trai | Chon dap an A khi du dwell-time |
-| B | Goc tren ben phai | Chon dap an B khi du dwell-time |
-| C | Goc duoi ben trai | Chon dap an C khi du dwell-time |
-| D | Goc duoi ben phai | Chon dap an D khi du dwell-time |
-| DEADZONE | Vung giua/ngoai vung lua chon | Khong lam gi |
+| (Row, Col) | Khu vực Vật lý | Mã Hành Động (RegionId)| Mô tả Chức năng |
+| :--- | :--- | :--- | :--- |
+| `0, 0` | Góc Trái Trên | **A** | Chọn Đáp án A |
+| `0, 1` | Giữa Trên | **PREV** | Quay lại Câu trước |
+| `0, 2` | Góc Phải Trên | **B** | Chọn Đáp án B |
+| `1, 0` | Giữa Trái | **SAFE_MARGIN** | Lề an toàn cho mắt, **được miễn trừ vòng lặp Dwell-time**. |
+| `1, 1` | Tâm Màn hình | **DEADZONE** | Khu vực hiển thị bảng câu hỏi, **được miễn trừ vòng lặp Dwell-time**. |
+| `1, 2` | Giữa Phải | **NEXT** | Đi đến Câu tiếp theo |
+| `2, 0` | Góc Trái Dưới | **C** | Chọn Đáp án C |
+| `2, 1` | Giữa Dưới | **SUBMIT** | Nộp bài toàn phần |
+| `2, 2` | Góc Phải Dưới | **D** | Chọn Đáp án D |
 
-## Dwell-time state machine
+## 3. Quản lý Dwell-Time Linh hoạt (Dynamic Dwell-Time)
 
-| Trang thai | Dieu kien vao | Dieu kien ra |
-| :--- | :--- | :--- |
-| Tracking | Co du lieu gaze hop le | Mat face hoac loi detect |
-| Hovering Region | Gaze o A/B/C/D | Chuyen sang region khac hoac vao DEADZONE |
-| Dwell Counting | Gaze giu lien tuc tren cung region | Dat nguong dwell-time hoac roi region |
-| Selection Triggered | Dwell progress >= 100% | Reset timer va tiep tuc tracking |
+Chống chạm nhầm (Midas Touch) vốn là cội nguồn của hành vi sai sót ở Gaze Control. Để giải quyết, Dwell-Time giờ đây được đính kèm thẳng vào bên trong GazeProvider, cho phép quản lý thời gian linh động dựa trên nguyên tắc Fitts's Law.
 
-## Tham so chinh
+- **Trigger Interval Mặc định**: Quá trình chờ mặc định từ lúc mắt nhảy sang ô mới đến lúc gọi DOM Mousedown Click là `1500ms`.
+- **Trigger Interval Phá hủy**: Mất `3000ms` (3 giây) chuyên dụng cho hành động `SUBMIT` (Nộp bài) để tránh nộp nhầm.
+- **Trường hợp Ngoại Lệ (Vùng An Toàn)**: Bất cứ khi nào tọa độ rơi vào `DEADZONE` (Khu đọc đề) hoặc `SAFE_MARGIN` (Lề an nghỉ tay/mắt), tiến trình Dwell-Time lập tức gỡ bỏ cờ ghi nhớ và xả Timer về 0. Điều này nhằm giữ cho người dùng không bị click nhầm khi đang đọc hoặc nghỉ mắt.
+- **Tiến độ Hiển thị**: Mọi Component `GazeButton` đều được kết nối thẳng với thuộc tính `stats.dwellProgress` (nhận giá trị từ `0` tới `1`) để bôi màu Progress Bar song song với lõi.
 
-- Dwell-time mac dinh: 2000ms
-- Khoang khuyen nghi: 1500ms den 2000ms
-- Neu gaze vao DEADZONE: reset tien do dwell
+## 4. Tương tác Thêm (Extended Actions)
 
-## Visual feedback
-
-- Moi o dap an hien progress theo dwell.
-- Progress reset ngay khi user roi khoi region dang nhin.
-- Khi du nguong, UI danh dau dap an da chon.
-
-## Khac biet so voi co che cu
-
-- MCQ mode uu tien dwell-time va region selection.
-- Blink gesture khong phai co che chon dap an chinh trong man hinh MCQ.
-- Muc tieu la on dinh va giam click nham do micro-saccades.
+Mặc dù hệ thống 3x3 Grid bao phủ gần hết công năng của bài kiểm tra, cơ chế Blink (Nháy mắt) vẫn được duy trì như một lựa chọn "Click" thay thế. Người dùng có thể chủ động ngắt cài đặt Dwell-Time và chớp để click trực tiếp vào một ô họ đang nhìn.

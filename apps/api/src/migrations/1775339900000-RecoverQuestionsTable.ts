@@ -35,6 +35,8 @@ export class RecoverQuestionsTable1775339900000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('DROP TABLE IF EXISTS "questions"');
-    await queryRunner.query('DROP TYPE IF EXISTS "public"."questions_difficulty_enum"');
+    await queryRunner.query(
+      'DROP TYPE IF EXISTS "public"."questions_difficulty_enum"',
+    );
   }
 }

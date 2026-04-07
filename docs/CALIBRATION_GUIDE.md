@@ -1,56 +1,33 @@
 # Calibration Guide
 
-Tai lieu nay mo ta quy trinh calibration moi cho he thong MCQ 4 lua chon dieu khien bang mat.
+Tài liệu này mô tả quy trình hiệu chuẩn (calibration) cho hệ thống lưới 3x3 (Grid Matrix) dùng để điều khiển giao diện web bằng mắt.
 
-## Muc tieu calibration
+## Mục tiêu hiệu chuẩn
 
-Calibration duoc toi gian thanh 4 diem de giam thoi gian huan luyen va tang do on dinh cho bai toan chon vung (region-based), khong theo duoi toa do pixel chinh xac.
+Hiệu chuẩn đóng vai trò cung cấp dữ liệu cơ sở (Ground Truth) để các mô hình phi tuyến tính (`PolynomialGazeMapper` và `GazeMLPModel`) học được sự biến dạng hình học của mắt cũng như cấu trúc khuôn mặt của người dùng hiện tại lên tọa độ màn hình. 
 
-## Quy trinh calibration 4 diem
+Hệ thống đã nâng cấp từ cơ chế 4 điểm lên **9 điểm hiệu chuẩn** để bao phủ toàn bộ giới hạn của ma trận 3x3. Điều này đảm bảo thuật toán không dự đoán sai ở các vị trí giữa cạnh và khoảng trung tâm màn hình.
 
-1. Dang nhap user thuong (role user).
-2. Bat camera va dam bao chi co 1 khuon mat trong khung hinh.
-3. Bam Bat dau Calibration.
-4. Nhin lan luot vao 4 diem dai dien cho 4 goc:
-   - A: Top-Left
-   - B: Top-Right
-   - C: Bottom-Left
-   - D: Bottom-Right
-5. Giu mat on dinh tai moi diem den khi he thong chuyen diem tiep theo.
-6. Ket thuc vong lay mau, he thong huan luyen model va luu ket qua.
+## Quy trình hiệu chuẩn 9 điểm
 
-## Anh xa khong gian sau calibration
+1. Đăng nhập hệ thống (yêu cầu bật quyền truy cập camera).
+2. Đảm bảo chỉ có 1 khuôn mặt nằm trong tầm nhìn của Camera.
+3. Bấm **Bắt đầu Calibration**.
+4. Lần lượt nhìn vào 9 điểm hiệu chuẩn chớp tắt trên màn hình. Mỗi điểm được neo bằng công thức toán học nội suy chuẩn `1/6`, `1/2`, `5/6` chiều rộng/cao màn hình, tương đương với tọa độ trung tâm của các ô sau:
+   - Row 0 (Top): Left, Center, Right
+   - Row 1 (Mid): Left, Center, Right
+   - Row 2 (Bottom): Left, Center, Right
+5. Khi nhìn vào điểm mục tiêu, hạn chế "chớp mắt" hoặc "lắc đầu". Giữ yên khoảng 1-2 giây cho đến khi hệ thống tự động lưu mẫu và trỏ sáng sang điểm tiếp theo.
+6. Kết thúc vòng thu thập, hệ thống sẽ gộp dữ liệu cũ (nếu có) và bắt đầu huấn luyện Ridge Regression cũng như Mạng nơ-ron đa lớp (MLP Neural Network).
 
-Sau khi model du doan gaze (X, Y), he thong se anh xa vao 5 trang thai:
+## Khi nào cần thực hiện Calibration lại
 
-- A
-- B
-- C
-- D
-- DEADZONE
+- Đổi người sử dụng.
+- Đổi môi trường: Ánh sáng mạnh chiếu ngang, chênh sáng, trời tối.
+- Thay đổi phần cứng: Chỉnh ghế ngồi cao/thấp hơn, thay màn hình to hơn, đổi góc ngẩng của Webcam.
+- Hệ thống có vùng miền bắt đầu hoạt động không chính xác, gây tình trạng dính góc màn hình hoặc Midas Touch.
 
-Neu gaze roi vao DEADZONE thi khong kich hoat chon dap an.
+## Lưu trữ dữ liệu
 
-## Dwell-time selection
-
-- He thong khong dung blink-to-click de chon dap an MCQ.
-- Khi gaze o lien tuc tren mot lua chon A/B/C/D trong khoang 1.5 - 2.0 giay, he thong trigger chon dap an.
-- UI co progress indicator de hien thi tien do dwell-time.
-
-## Luu du lieu calibration
-
-- Du lieu calibration va model duoc luu local de tai su dung nhanh.
-- Trong backend, trang thai da calibration cua user duoc xac dinh qua du lieu weights.
-- User chua co weights se bi buoc calibration truoc khi vao man hinh MCQ.
-
-## Khi nao can calibration lai
-
-- Doi vi tri ngoi hoac goc dat webcam.
-- Doi man hinh, do phan giai, hoac dieu kien anh sang.
-- He thong nhan nham vung A/B/C/D thuong xuyen.
-
-## Khuyen nghi de calibration on dinh
-
-- Ngoi cach webcam on dinh, mat trong tam khung hinh.
-- Khong quay dau nhanh trong luc lay mau.
-- Lam lai calibration neu vua thay doi moi truong su dung.
+Toàn bộ Weights của `PolynomialGazeMapper` (Bậc 2) và `GazeMLPModel` kèm số điểm mẫu huấn luyện đều sẽ được lưu trữ cục bộ (Local Storage).
+Người dùng có thể tiến hành gộp vòng calibration mới vào vòng cũ để cải thiện độ mượt hoặc chọn **Reset Calibration Data** để dọn dẹp hệ thống quay về từ đầu.

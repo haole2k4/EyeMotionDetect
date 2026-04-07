@@ -15,6 +15,7 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   const [session, setSession] = useState<any>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isFinishing, setIsFinishing] = useState(false);
 
   // Fetch session data
   useEffect(() => {
@@ -37,14 +38,17 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
     loadSession();
   }, [sessionId, router]);
 
-  const handleFinish = async () => {
+  const handleFinish = useCallback(async () => {
+    if (isFinishing) return;
+    setIsFinishing(true);
     try {
       await api.post(`/exams/sessions/${sessionId}/finish`);
       router.push('/user/dashboard');
     } catch (error) {
       console.error(error);
+      setIsFinishing(false);
     }
-  };
+  }, [isFinishing, router, sessionId]);
 
   const handleManualFinish = async () => {
     if (!confirm('Bạn có chắc chắn muốn nộp bài?')) return;
@@ -85,19 +89,15 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         return cloned;
       });
 
-      // Show success somehow or just auto-advance
-      setTimeout(() => {
-        if (currentIndex < session.exam.questions.length - 1) {
-          setCurrentIndex(prev => prev + 1);
-        } else {
-          handleFinish(); // If it's the last question
-        }
-      }, 1000);
+      if (currentIndex < session.exam.questions.length - 1) {
+        setCurrentIndex((prev) => prev + 1);
+      } else {
+        await handleFinish();
+      }
     } catch (error) {
       console.error(error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, currentIndex, sessionId]);
+  }, [session, currentIndex, sessionId, handleFinish]);
 
   if (loading || !session) {
     return <div className="h-screen w-full flex items-center justify-center bg-gray-900 text-white text-3xl font-bold tracking-widest">ĐANG TẢI...</div>;
@@ -163,29 +163,10 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
             question={currentQuestion.content}
             options={optionsObj}
             onAnswerSelected={handleAnswer}
+            onPrev={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
+            onNext={() => setCurrentIndex((prev) => Math.min(prev + 1, questions.length - 1))}
+            onSubmit={handleManualFinish}
           />
-        </div>
-
-        {/* Navigation bottom */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex gap-8">
-          <Button 
-            size="lg" 
-            variant="outline" 
-            className="w-48 h-16 text-xl rounded-full border-gray-600 bg-gray-800/80 text-white hover:bg-gray-700 font-bold"
-            disabled={currentIndex === 0}
-            onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-          >
-            QUAY LẠI
-          </Button>
-          <Button 
-            size="lg" 
-            variant="outline" 
-            className="w-48 h-16 text-xl rounded-full border-gray-600 bg-gray-800/80 text-white hover:bg-gray-700 font-bold"
-            disabled={currentIndex === questions.length - 1}
-            onClick={() => setCurrentIndex(prev => Math.min(questions.length - 1, prev + 1))}
-          >
-            TIẾP THEO
-          </Button>
         </div>
       </div>
     </GazeProvider>

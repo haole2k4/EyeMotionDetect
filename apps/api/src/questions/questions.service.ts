@@ -33,7 +33,10 @@ export class QuestionsService {
     return this.questionsRepository.save(question);
   }
 
-  async update(id: string, updateQuestionDto: UpdateQuestionDto): Promise<Question> {
+  async update(
+    id: string,
+    updateQuestionDto: UpdateQuestionDto,
+  ): Promise<Question> {
     const question = await this.findOne(id);
     Object.assign(question, updateQuestionDto);
     return this.questionsRepository.save(question);
