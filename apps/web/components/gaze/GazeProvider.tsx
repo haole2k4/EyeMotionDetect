@@ -30,6 +30,7 @@ const IRIS_AMPLIFICATION = 1.45;
 const DEFAULT_DWELL_REQUIREMENT_MS = 700;
 const SUBMIT_DWELL_REQUIREMENT_MS = 1200;
 const STATS_PUBLISH_INTERVAL_MS = 80;
+const DWELL_CLICK_COOLDOWN_MS = 250;
 
 function toPoints(lm: NormalizedLandmark[], indices: readonly number[]): Point2D[] {
   return indices.map((index) => [lm[index].x, lm[index].y]);
@@ -136,6 +137,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const dwellStartRef = useRef<number | null>(null);
   const currentDwellProgressRef = useRef<number>(0);
   const lastStatsPublishRef = useRef<number>(0);
+  const lastDwellClickAtRef = useRef<number>(0);
 
     const getEarThreshold = useCallback(() => {
       return earDetectorRef.current.getThreshold();
@@ -193,11 +195,8 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       isDraggingRef.current = !isDraggingRef.current;
       if (isDraggingRef.current) {
         dispatchMouseEvent('mousedown', x, y);
-        // Thay đổi cảnh báo cho Overlay
-        console.log("Mở trạng thái DRAG AND DROP");
       } else {
         dispatchMouseEvent('mouseup', x, y);
-        console.log("Đóng trạng thái DRAG AND DROP");
       }
     }
   }, [dispatchMouseEvent]);
@@ -235,7 +234,13 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
     const faceCount = result.faceLandmarks?.length ?? 0;
     const singleFaceReady = faceCount === 1;
-    const eyeOverlay = singleFaceReady ? buildEyeOverlay(result.faceLandmarks?.[0]) : null;
+    const now = performance.now();
+    const shouldPublishStats =
+      now - lastStatsPublishRef.current >= STATS_PUBLISH_INTERVAL_MS;
+    const eyeOverlay =
+      shouldPublishStats && singleFaceReady
+        ? buildEyeOverlay(result.faceLandmarks?.[0])
+        : null;
 
     const features = singleFaceReady ? extractFeatures(result) : null;
 
@@ -314,18 +319,17 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       const elapsedDwell = performance.now() - dwellStartRef.current;
       currentDwellProgressRef.current = Math.min(elapsedDwell / currentDwellRequirement, 1.0);
       if (currentDwellProgressRef.current >= 1.0) {
-        // Trigger a click!
-        console.log(`Dwell click at Region ${newRegion}`);
-        dispatchMouseEvent('click', smoothed.x, smoothed.y);
-        // Reset timer to avoid multiple clicks
-        dwellStartRef.current = performance.now();
+        if (now - lastDwellClickAtRef.current >= DWELL_CLICK_COOLDOWN_MS) {
+          dispatchMouseEvent('click', smoothed.x, smoothed.y);
+          lastDwellClickAtRef.current = now;
+        }
+        dwellStartRef.current = now;
         currentDwellProgressRef.current = 0;
       }
     }
 
     // TÃ­nh FPS
     framesRef.current++;
-    const now = performance.now();
     const elapsed = now - lastTimeRef.current;
     let currentFps = fpsRef.current;
     if (elapsed >= 1000) {
@@ -335,7 +339,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       fpsRef.current = currentFps;
     }
 
-    if (now - lastStatsPublishRef.current >= STATS_PUBLISH_INTERVAL_MS) {
+    if (shouldPublishStats) {
       setStats({
         fps: currentFps,
         mediapipeMs: tMediaPipe,
@@ -365,6 +369,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     smootherRef.current = new GazeSmoother();
     hasRawGazeRef.current = false;
     lastStatsPublishRef.current = 0;
+    lastDwellClickAtRef.current = 0;
     lastRawGazeRef.current = [window.innerWidth / 2, window.innerHeight / 2];
     lastTimeRef.current = performance.now();
     rafRef.current = requestAnimationFrame(loop);

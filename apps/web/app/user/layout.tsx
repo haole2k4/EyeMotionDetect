@@ -29,6 +29,7 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={true}
                 className={cn(
                   'block px-4 py-3 rounded-xl text-sm font-medium transition-all',
                   isActive

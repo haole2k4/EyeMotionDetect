@@ -20,7 +20,7 @@ export function GazeButton({ id, onClick, className = '', children, isActive = f
 
   return (
     <div
-      className={`relative overflow-hidden cursor-pointer flex items-center justify-center transition-colors group border-4 ${isActive ? 'border-yellow-400' : 'border-transparent'} hover:border-white ${className}`}
+      className={`relative overflow-hidden cursor-pointer flex items-center justify-center transition-colors group border-4 ${isActive ? 'border-cyan-500' : 'border-transparent'} hover:border-cyan-400 ${className}`}
       onClick={onClick} // Click event is automatically dispatched by GazeProvider upon 100% dwell time!
     >
       <div className="z-10 w-full h-full flex flex-col items-center justify-center">
