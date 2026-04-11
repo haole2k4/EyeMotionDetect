@@ -17,7 +17,7 @@ export default function GazePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [status, setStatus] = useState("Chua bat dau");
+  const [status, setStatus] = useState("Chưa bắt đầu");
   const [activeMode, setActiveMode] = useState<"fallback" | "polynomial" | "mlp">("fallback");
   const [cameraReady, setCameraReady] = useState(false);
 
@@ -51,7 +51,7 @@ export default function GazePage() {
     if (!videoRef.current) return;
 
     try {
-      setStatus("Dang xin quyen camera...");
+      setStatus("Đang xin quyền camera...");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -66,10 +66,10 @@ export default function GazePage() {
       await videoRef.current.play();
 
       startPipeline(videoRef.current);
-      setStatus("Dang chay eye tracking");
+      setStatus("Đang chạy eye tracking");
       setCameraReady(true);
     } catch {
-      setStatus("Khong mo duoc camera. Hay cap quyen webcam cho localhost:3000");
+      setStatus("Không mở được camera. Hãy cấp quyền webcam cho localhost:3000");
       setCameraReady(false);
     }
   }, [startPipeline]);
@@ -86,7 +86,7 @@ export default function GazePage() {
       videoRef.current.srcObject = null;
     }
     setCameraReady(false);
-    setStatus("Da dung");
+    setStatus("Đã dừng");
   }, [stopPipeline]);
 
   useEffect(() => {
@@ -111,9 +111,9 @@ export default function GazePage() {
       <section className="mx-auto max-w-4xl space-y-6 mt-12">
         <h1 className="text-3xl font-semibold md:text-4xl">EyeMotionDetect Phase 6</h1>
         <p className="text-neutral-300">
-          Mode hien tai: <strong>{activeMode}</strong>. Bam Start de bat camera va dieu khien con tro gaze.
+          Mode hiện tại: <strong>{activeMode}</strong>. Bấm Start để bật camera và điều khiển con trỏ gaze.
         </p>
-        <p className="text-sm text-neutral-400">Trang thai: {status}</p>
+        <p className="text-sm text-neutral-400">Trạng thái: {status}</p>
 
         <div className="flex flex-wrap gap-3">
           <button
@@ -180,12 +180,12 @@ export default function GazePage() {
           </div>
           <p className={`text-sm ${stats?.singleFaceReady === false ? "text-amber-300" : "text-emerald-300"}`}>
             {stats?.singleFaceReady === false
-              ? `Chi chap nhan dung 1 khuon mat (hien tai: ${stats.faceCount}). Da tam khoa dieu khien chuot.`
-              : "Dang khoa 1 khuon mat. Eye contour da duoc bat."}
+              ? `Chỉ chấp nhận đúng 1 khuôn mặt (hiện tại: ${stats.faceCount}). Đã tạm khóa điều khiển chuột.`
+              : "Đang khóa 1 khuôn mặt. Eye contour đã được bật."}
           </p>
         </div>
 
-        <p className="text-sm text-neutral-500">Goi Debug Overlay bang phim Ctrl+Shift+D.</p>
+        <p className="text-sm text-neutral-500">Gọi Debug Overlay bằng phím Ctrl+Shift+D.</p>
       </section>
     </main>
   );

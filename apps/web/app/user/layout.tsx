@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
+import { GazeProvider } from '@/components/gaze/GazeProvider';
+import { DebugOverlay } from '@/components/gaze/DebugOverlay';
 
 const menuItems = [
   { href: '/user/dashboard', label: 'Bảng thi' },
@@ -18,45 +20,46 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
   const user = useAuthStore((state) => state.user);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <aside className="w-64 bg-white border-r px-4 py-8 flex flex-col h-full shadow-sm">
-        <h1 className="text-2xl font-bold mb-2 text-slate-800 px-2">{user?.username || 'Học Viên'}</h1>
-        <p className="text-sm px-2 text-slate-500 mb-8">{user?.email || ''}</p>
-        <nav className="flex-1 space-y-2">
-          {menuItems.map((item) => {
-            const isActive = pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={true}
-                className={cn(
-                  'block px-4 py-3 rounded-xl text-sm font-medium transition-all',
-                  isActive
-                    ? 'bg-slate-100 text-blue-700 shadow-inner'
-                    : 'text-slate-600 hover:bg-slate-50 shadow-sm hover:shadow-md'
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <button
-          onClick={() => {
-            logout();
-            window.location.href = '/login';
-          }}
-          className="w-full mt-auto px-4 py-3 bg-red-50 rounded-xl text-red-600 font-medium text-sm transition-all text-left shadow-sm hover:shadow-md"
-        >
-          Đăng xuất
-        </button>
-      </aside>
-      <main className="flex-1 overflow-auto bg-slate-50 p-8">
-        <div className="mx-auto max-w-5xl">
-          {children}
-        </div>
-      </main>
-    </div>
+    <GazeProvider>
+      <div className="flex h-screen overflow-hidden bg-background text-foreground">
+        <aside className="flex h-full w-64 flex-col border-r bg-card px-4 py-8">
+          <h1 className="mb-2 px-2 text-2xl font-bold">{user?.username || 'Học Viên'}</h1>
+          <p className="mb-8 px-2 text-sm text-muted-foreground">{user?.email || ''}</p>
+          <nav className="flex-1 space-y-2">
+            {menuItems.map((item) => {
+              const isActive = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  prefetch
+                  className={cn(
+                    'block rounded-lg px-4 py-3 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          <button
+            onClick={() => {
+              logout();
+              window.location.href = '/login';
+            }}
+            className="mt-auto w-full rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/15"
+          >
+            Đăng xuất
+          </button>
+        </aside>
+        <main className="flex-1 overflow-auto bg-background px-6 py-8 md:px-8">
+          <div className="mx-auto max-w-5xl space-y-6">{children}</div>
+        </main>
+      </div>
+      <DebugOverlay />
+    </GazeProvider>
   );
 }

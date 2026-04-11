@@ -96,3 +96,5 @@ docker-data/
 *.pem
 
 .vscode/
+
+prompt.md

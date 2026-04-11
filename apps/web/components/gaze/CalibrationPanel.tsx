@@ -155,7 +155,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
   const [currentRound, setCurrentRound] = useState(0);
   const [currentPoint, setCurrentPoint] = useState<CalibrationPoint | null>(null);
   const [trainingMae, setTrainingMae] = useState<number | null>(null);
-  const [message, setMessage] = useState("Chua chay calibration");
+  const [message, setMessage] = useState("Chưa chạy calibration");
   const [storedSampleCount, setStoredSampleCount] = useState(0);
   const [storedRounds, setStoredRounds] = useState(0);
 
@@ -177,11 +177,11 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
   const runCalibration = useCallback(async () => {
     if (!cameraReady) {
-      setMessage("Can bat camera truoc khi calibration");
+      setMessage("Cần bật camera trước khi calibration");
       return;
     }
     if (!stats?.singleFaceReady) {
-      setMessage("Calibration yeu cau duy nhat 1 khuon mat trong khung hinh");
+      setMessage("Calibration yêu cầu duy nhất 1 khuôn mặt trong khung hình");
       return;
     }
 
@@ -189,7 +189,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     setCurrentRound(0);
     setCurrentPoint(null);
     setTrainingMae(null);
-    setMessage("Dang thu thap du lieu calibration...");
+    setMessage("Đang thu thập dữ liệu calibration...");
 
     const session = new CalibrationSession();
     let round = 0;
@@ -204,7 +204,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
           for (let index = 0; index < totalPointsPerRound; index += 1) {
             const target = shuffledPoints[index];
             setCurrentPoint(target);
-            setMessage(`Vong ${round}: diem ${index + 1}/${totalPointsPerRound}`);
+            setMessage(`Vòng ${round}: điểm ${index + 1}/${totalPointsPerRound}`);
 
             await withTimeout(
               (signal) => session.collectPoint(
@@ -214,12 +214,12 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
                 signal,
                 getEarThreshold()              ),
               POINT_TIMEOUT_MS,
-              "Het thoi gian lay mau cho mot diem, vui long thu lai"
+              "Hết thời gian lấy mẫu cho một điểm, vui lòng thử lại"
             );
           }        setCurrentPoint(null);
         continueRounds =
           round < MAX_ROUNDS &&
-          window.confirm(`Da hoan thanh vong ${round}. Ban co muon tiep tuc them 1 vong calibration nua khong?`);
+          window.confirm(`Đã hoàn thành vòng ${round}. Bạn có muốn tiếp tục thêm 1 vòng calibration nữa không?`);
       }
 
       const currentWidth = window.innerWidth;
@@ -233,7 +233,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       }));
 
       if (newSamples.length < totalPointsPerRound) {
-        throw new Error("Khong du du lieu calibration de train model");
+        throw new Error("Không đủ dữ liệu calibration để train model");
       }
 
       const previousSamples = await getCalibrationSamplesLocally();
@@ -244,7 +244,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
       if (previousSamples.length > 0) {
         const shouldMerge = window.confirm(
-          `Da tim thay ${previousSamples.length} mau calibration cu. Ban co muon gop vao lan train nay khong?`,
+          `Đã tìm thấy ${previousSamples.length} mẫu calibration cũ. Bạn có muốn gộp vào lần train này không?`,
         );
 
         if (shouldMerge) {
@@ -258,7 +258,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
       trainingSamples = normalizeSamplesToViewport(trainingSamples, currentWidth, currentHeight);
 
-      setMessage("Dang luu mau va huan luyen polynomial...");
+  setMessage("Đang lưu mẫu và huấn luyện polynomial...");
       await saveCalibrationSamplesLocally(trainingSamples, totalRounds);
 
       const polynomial = new PolynomialGazeMapper();
@@ -274,7 +274,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       await setModel("polynomial", polyWeights);
       onModelApplied("polynomial");
 
-      setMessage("Dang huan luyen MLP...");
+      setMessage("Đang huấn luyện MLP...");
       await GazeMLPModel.ensureBackendReady();
       const mlp = new GazeMLPModel();
       mlp.build();
@@ -294,9 +294,9 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       onModelApplied("mlp");
 
       await refreshStoredStats();
-      setMessage(`Calibration thanh cong: ${trainingSamples.length} mau train, tong ${totalRounds} vong`);
+      setMessage(`Calibration thành công: ${trainingSamples.length} mẫu train, tổng ${totalRounds} vòng`);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Calibration that bai";
+      const msg = error instanceof Error ? error.message : "Calibration thất bại";
       setMessage(msg);
     } finally {
       setCurrentPoint(null);
@@ -316,7 +316,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
   const resetCalibration = useCallback(async () => {
     if (isRunning) return;
 
-    const ok = window.confirm("Ban chac chan muon xoa toan bo du lieu calibration va model da luu?");
+    const ok = window.confirm("Bạn chắc chắn muốn xóa toàn bộ dữ liệu calibration và model đã lưu?");
     if (!ok) return;
 
     await resetCalibrationLocally();
@@ -325,20 +325,20 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     setTrainingMae(null);
     setCurrentRound(0);
     setCurrentPoint(null);
-    setMessage("Da reset du lieu calibration. He thong dang o fallback mode.");
+    setMessage("Đã reset dữ liệu calibration. Hệ thống đang ở fallback mode.");
     await refreshStoredStats();
   }, [isRunning, onModelApplied, refreshStoredStats, setModel]);
 
   return (
     <div className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-      <p className="text-sm text-neutral-300">Hieu chinh de huan luyen model theo mat cua ban.</p>
+      <p className="text-sm text-neutral-300">Hiệu chỉnh để huấn luyện model theo mắt của bạn.</p>
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => void runCalibration()}
           disabled={isRunning || !cameraReady}
           className="rounded-md bg-cyan-400 px-4 py-2 font-medium text-black disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Bat dau Calibration
+          Bắt đầu Calibration
         </button>
         <button
           onClick={() => void resetCalibration()}
@@ -347,8 +347,8 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
         >
           Reset Calibration Data
         </button>
-        <span className="text-xs text-neutral-400">Moi vong: {totalPointsPerRound} diem</span>
-        <span className="text-xs text-neutral-400">Da luu: {storedSampleCount} mau / {storedRounds} vong</span>
+        <span className="text-xs text-neutral-400">Mỗi vòng: {totalPointsPerRound} điểm</span>
+        <span className="text-xs text-neutral-400">Đã lưu: {storedSampleCount} mẫu / {storedRounds} vòng</span>
         {trainingMae !== null && (
           <span className="text-xs text-emerald-300">MLP MAE: {trainingMae.toFixed(1)} px</span>
         )}
@@ -358,7 +358,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
       {isRunning && (
         <p className="text-xs text-amber-300">
-          Dang chay vong {currentRound}. Sau moi vong he thong se hoi ban co muon tiep tuc hay khong.
+          Đang chạy vòng {currentRound}. Sau mỗi vòng hệ thống sẽ hỏi bạn có muốn tiếp tục hay không.
         </p>
       )}
 
@@ -369,7 +369,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
             style={{ left: `${overlayPoint.x * 100}%`, top: `${overlayPoint.y * 100}%` }}
           />
           <div className="absolute left-1/2 top-6 -translate-x-1/2 rounded-md bg-black/70 px-3 py-2 text-xs text-white">
-            Giu mat vao diem tron, han che chopy mat
+            Giữ mắt vào điểm tròn, hạn chế chớp mắt
           </div>
         </div>
       )}

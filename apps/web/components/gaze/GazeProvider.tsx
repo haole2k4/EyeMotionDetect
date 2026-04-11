@@ -1,11 +1,8 @@
 "use client";
 
-import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
 import * as Comlink from 'comlink';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AdaptiveEARDetector, type BlinkAction } from '../../lib/gaze/ear-detector';
-import { extractFeatures } from '../../lib/gaze/feature-extractor';
-import { createFaceLandmarker } from '../../lib/gaze/mediapipe';
 import { WebCursorController } from '../../lib/gaze/mouse-controller';
 import { GazeSmoother } from '../../lib/gaze/smoother';
 import type { GazeFeatures } from '../../lib/gaze/types';
@@ -21,30 +18,13 @@ interface EyeOverlay {
   rightIris: Point2D[];
 }
 
-const LEFT_EYE_CONTOUR = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246] as const;
-const RIGHT_EYE_CONTOUR = [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466] as const;
-const LEFT_IRIS = [468, 469, 470, 471, 472] as const;
-const RIGHT_IRIS = [473, 474, 475, 476, 477] as const;
 const RAW_GAZE_MAX_STEP_PX = 120;
 const IRIS_AMPLIFICATION = 1.45;
 const DEFAULT_DWELL_REQUIREMENT_MS = 700;
 const SUBMIT_DWELL_REQUIREMENT_MS = 1200;
 const STATS_PUBLISH_INTERVAL_MS = 80;
 const DWELL_CLICK_COOLDOWN_MS = 250;
-
-function toPoints(lm: NormalizedLandmark[], indices: readonly number[]): Point2D[] {
-  return indices.map((index) => [lm[index].x, lm[index].y]);
-}
-
-function buildEyeOverlay(lm: NormalizedLandmark[] | null | undefined): EyeOverlay | null {
-  if (!lm) return null;
-  return {
-    leftEye: toPoints(lm, LEFT_EYE_CONTOUR),
-    rightEye: toPoints(lm, RIGHT_EYE_CONTOUR),
-    leftIris: toPoints(lm, LEFT_IRIS),
-    rightIris: toPoints(lm, RIGHT_IRIS),
-  };
-}
+const PIPELINE_INIT_DELAY_MS = 700;
 
 function stabilizeRawGaze(nextRaw: Point2D, prevRaw: Point2D, hasPrev: boolean, maxStepPx: number): Point2D {
   if (!hasPrev) return nextRaw;
@@ -81,6 +61,9 @@ interface DebugStats {
 
 interface GazeContextType {
   stats: DebugStats | null;
+  isInitializing: boolean;
+  isEngineReady: boolean;
+  initializationError: string | null;
   startPipeline: (video: HTMLVideoElement) => void;
   stopPipeline: () => void;
   setModel: (modelType: 'polynomial' | 'mlp' | 'none', weights?: PolynomialWeights | MLPWeights) => Promise<void>;
@@ -112,17 +95,21 @@ export const useGaze = () => {
 
 export function GazeProvider({ children }: { children: React.ReactNode }) {
   const [stats, setStats] = useState<DebugStats | null>(null);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [isEngineReady, setIsEngineReady] = useState(false);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const workerRef = useRef<Comlink.Remote<GazeWorker> | null>(null);
   const mouseControllerRef = useRef<WebCursorController | null>(null);
+  const mountedRef = useRef(true);
+  const initPromiseRef = useRef<Promise<void> | null>(null);
+  const engineReadyRef = useRef(false);
 
   const earDetectorRef = useRef(new AdaptiveEARDetector());
   const smootherRef = useRef(new GazeSmoother());
 
   const activeModelRef = useRef<'polynomial' | 'mlp' | 'none'>('none');
-  const polyWeightsRef = useRef<{ x: number[], y: number[] } | null>(null);
 
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(performance.now());
@@ -139,9 +126,43 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const lastStatsPublishRef = useRef<number>(0);
   const lastDwellClickAtRef = useRef<number>(0);
 
-    const getEarThreshold = useCallback(() => {
-      return earDetectorRef.current.getThreshold();
-    }, []);
+  const getEarThreshold = useCallback(() => {
+    return earDetectorRef.current.getThreshold();
+  }, []);
+
+  const ensureEngineInitialized = useCallback(async () => {
+    if (engineReadyRef.current || !workerRef.current) return;
+    if (initPromiseRef.current) return initPromiseRef.current;
+
+    if (mountedRef.current) {
+      setIsInitializing(true);
+      setInitializationError(null);
+    }
+
+    initPromiseRef.current = workerRef.current
+      .initialize()
+      .then(() => {
+        engineReadyRef.current = true;
+        if (mountedRef.current) {
+          setIsEngineReady(true);
+        }
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Khoi tao worker that bai';
+        if (mountedRef.current) {
+          setInitializationError(message);
+        }
+      })
+      .finally(() => {
+        if (mountedRef.current) {
+          setIsInitializing(false);
+        }
+        initPromiseRef.current = null;
+      });
+
+    return initPromiseRef.current;
+  }, []);
+
   const stopPipeline = useCallback(() => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -150,26 +171,34 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Khởi tạo Worker
+    mountedRef.current = true;
+
     const worker = new Worker(new URL('../../workers/gaze.worker.ts', import.meta.url), { type: 'module' });
     workerRef.current = Comlink.wrap<GazeWorker>(worker);
-    workerRef.current.initTF();
 
-    // Khởi tạo MediaPipe
-    createFaceLandmarker().then(lm => {
-      landmarkerRef.current = lm;
-    });
-
-    // Khởi tạo Cursor control
     mouseControllerRef.current = new WebCursorController();
+    const initTimer = window.setTimeout(() => {
+      void ensureEngineInitialized();
+    }, PIPELINE_INIT_DELAY_MS);
 
     return () => {
+      mountedRef.current = false;
+      window.clearTimeout(initTimer);
       stopPipeline();
+      engineReadyRef.current = false;
+      setIsEngineReady(false);
+      setIsInitializing(false);
+
+      if (workerRef.current) {
+        void workerRef.current.shutdown();
+      }
+      workerRef.current = null;
       worker.terminate();
+
       if (mouseControllerRef.current) mouseControllerRef.current.destroy();
-      if (landmarkerRef.current) landmarkerRef.current.close();
+      mouseControllerRef.current = null;
     };
-  }, [stopPipeline]);
+  }, [ensureEngineInitialized, stopPipeline]);
 
   const dispatchMouseEvent = useCallback((type: 'mousedown' | 'mouseup' | 'click' | 'contextmenu', clientX: number, clientY: number) => {
     const el = document.elementFromPoint(clientX, clientY);
@@ -202,7 +231,13 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   }, [dispatchMouseEvent]);
 
   const loop = useCallback(async () => {
-    if (!videoRef.current || !landmarkerRef.current || !workerRef.current) {
+    if (!videoRef.current || !workerRef.current) {
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
+
+    if (!engineReadyRef.current) {
+      void ensureEngineInitialized();
       rafRef.current = requestAnimationFrame(loop);
       return;
     }
@@ -218,31 +253,29 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const t0 = performance.now();
-    let result;
+    const frameStart = performance.now();
+    const shouldPublishStats =
+      frameStart - lastStatsPublishRef.current >= STATS_PUBLISH_INTERVAL_MS;
+
+    let detection;
     try {
-      result = landmarkerRef.current.detectForVideo(video, t0);
+      const frameBitmap = await createImageBitmap(video);
+      detection = await workerRef.current.detectFrame(frameBitmap, frameStart, shouldPublishStats);
     } catch {
       latestFeaturesRef.current = null;
       rafRef.current = requestAnimationFrame(loop);
       return;
     }
-    const tMediaPipe = performance.now() - t0;
+
+    const tMediaPipe = detection.mediapipeMs;
 
     const w = window.innerWidth;
     const h = window.innerHeight;
 
-    const faceCount = result.faceLandmarks?.length ?? 0;
-    const singleFaceReady = faceCount === 1;
-    const now = performance.now();
-    const shouldPublishStats =
-      now - lastStatsPublishRef.current >= STATS_PUBLISH_INTERVAL_MS;
-    const eyeOverlay =
-      shouldPublishStats && singleFaceReady
-        ? buildEyeOverlay(result.faceLandmarks?.[0])
-        : null;
-
-    const features = singleFaceReady ? extractFeatures(result) : null;
+    const faceCount = detection.faceCount;
+    const singleFaceReady = detection.singleFaceReady;
+    const eyeOverlay = detection.eyeOverlay;
+    const features = detection.features;
 
     let activeRawGaze: Point2D = lastRawGazeRef.current;
     let inferenceMs = 0;
@@ -251,28 +284,22 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     latestFeaturesRef.current = features;
 
     if (features) {
-      blinkState = earDetectorRef.current.update(features.earLeft, features.earRight, t0);
+      blinkState = earDetectorRef.current.update(features.earLeft, features.earRight, frameStart);
 
-      // Nếu đang nhắm mắt sâu thì không predict tránh nhảy toạ độ, nội suy từ Smooth cũ
       if (blinkState === 'none' && !features.isOccluded) {
-        const t1 = performance.now();
-        if (activeModelRef.current === 'mlp') {
-          try {
-            activeRawGaze = await workerRef.current.runMLP(features, w, h);
-          } catch {
-            activeModelRef.current = 'none';
-          }
-        } else if (activeModelRef.current === 'polynomial' && polyWeightsRef.current) {
-          activeRawGaze = await workerRef.current.runPolynomial(features, polyWeightsRef.current.x, polyWeightsRef.current.y);
-        } else {
-          const irisX = (features.irisXLeft + features.irisXRight) / 2;
-          const irisY = (features.irisYLeft + features.irisYRight) / 2;
-          const amplifiedX = (irisX - 0.5) * IRIS_AMPLIFICATION + 0.5;
-          const amplifiedY = (irisY - 0.5) * IRIS_AMPLIFICATION + 0.5;
-          activeRawGaze = [
-            clamp(amplifiedX * w, 0, w),
-            clamp(amplifiedY * h, 0, h),
-          ];
+        try {
+          const inference = await workerRef.current.inferGaze(
+            features,
+            w,
+            h,
+            activeModelRef.current,
+            IRIS_AMPLIFICATION,
+          );
+          activeRawGaze = inference.rawGaze;
+          inferenceMs = inference.inferenceMs;
+          activeModelRef.current = inference.activeModel;
+        } catch {
+          activeModelRef.current = 'none';
         }
 
         activeRawGaze = stabilizeRawGaze(activeRawGaze, lastRawGazeRef.current, hasRawGazeRef.current, RAW_GAZE_MAX_STEP_PX);
@@ -282,14 +309,11 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
         ];
         activeRawGaze = lastRawGazeRef.current;
         hasRawGazeRef.current = true;
-        inferenceMs = performance.now() - t1;
       }
     }
 
-    // Làm mượt toạ độ
     const smoothed = smootherRef.current.update(activeRawGaze[0], activeRawGaze[1]);
 
-    // Cập nhật Cursor và gửi click event
     if (mouseControllerRef.current) {
       mouseControllerRef.current.moveTo(smoothed.x, smoothed.y);
     }
@@ -297,26 +321,25 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       handleBlinkAction(blinkState, smoothed.x, smoothed.y);
     }
 
-    // Calculate Region and Dwell-time using new Grid logic
     const { row, col } = getGridCell(smoothed.x, smoothed.y, w, h);
     const newRegion = getActionFromGrid(row, col) as RegionId;
-    
-    // Dynamic dwell time per region
+
     let currentDwellRequirement = DEFAULT_DWELL_REQUIREMENT_MS;
     if (newRegion === 'SUBMIT') currentDwellRequirement = SUBMIT_DWELL_REQUIREMENT_MS;
-    
+
     const isSafeZone = (newRegion === 'DEADZONE' || newRegion === 'SAFE_MARGIN');
+    const now = performance.now();
 
     if (newRegion !== regionRef.current) {
       regionRef.current = newRegion;
       if (!isSafeZone) {
-        dwellStartRef.current = performance.now();
+        dwellStartRef.current = now;
       } else {
         dwellStartRef.current = null;
       }
       currentDwellProgressRef.current = 0;
     } else if (!isSafeZone && dwellStartRef.current) {
-      const elapsedDwell = performance.now() - dwellStartRef.current;
+      const elapsedDwell = now - dwellStartRef.current;
       currentDwellProgressRef.current = Math.min(elapsedDwell / currentDwellRequirement, 1.0);
       if (currentDwellProgressRef.current >= 1.0) {
         if (now - lastDwellClickAtRef.current >= DWELL_CLICK_COOLDOWN_MS) {
@@ -328,7 +351,6 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // TÃ­nh FPS
     framesRef.current++;
     const elapsed = now - lastTimeRef.current;
     let currentFps = fpsRef.current;
@@ -361,11 +383,13 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     }
 
     rafRef.current = requestAnimationFrame(loop);
-  }, [dispatchMouseEvent, handleBlinkAction]);
+  }, [dispatchMouseEvent, ensureEngineInitialized, handleBlinkAction]);
 
   const startPipeline = useCallback((videoElement: HTMLVideoElement) => {
     videoRef.current = videoElement;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    void ensureEngineInitialized();
+
     smootherRef.current = new GazeSmoother();
     hasRawGazeRef.current = false;
     lastStatsPublishRef.current = 0;
@@ -373,30 +397,56 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     lastRawGazeRef.current = [window.innerWidth / 2, window.innerHeight / 2];
     lastTimeRef.current = performance.now();
     rafRef.current = requestAnimationFrame(loop);
-  }, [loop]);
+  }, [ensureEngineInitialized, loop]);
 
   const setModel = useCallback(async (modelType: 'polynomial' | 'mlp' | 'none', weights?: PolynomialWeights | MLPWeights) => {
     activeModelRef.current = modelType;
+    if (!workerRef.current) return;
+
+    await ensureEngineInitialized();
+
     if (modelType === 'none') {
-      polyWeightsRef.current = null;
+      workerRef.current.clearPolynomialWeights();
       return;
     }
 
     if (modelType === 'polynomial' && weights && 'coeffsX' in weights) {
-      polyWeightsRef.current = { x: weights.coeffsX, y: weights.coeffsY };
+      await workerRef.current.setPolynomialWeights(weights.coeffsX, weights.coeffsY);
       return;
     }
 
-    if (modelType === 'mlp' && weights && 'json' in weights && workerRef.current) {
+    if (modelType === 'mlp' && weights && 'json' in weights) {
       await workerRef.current.loadMLPModel(weights.json, weights.weights);
     }
-  }, []);
+  }, [ensureEngineInitialized]);
 
   const getLatestFeatures = useCallback(() => latestFeaturesRef.current, []);
 
   return (
-    <GazeContext.Provider value={{ stats, startPipeline, stopPipeline, setModel, getLatestFeatures, getEarThreshold }}>
+    <GazeContext.Provider
+      value={{
+        stats,
+        isInitializing,
+        isEngineReady,
+        initializationError,
+        startPipeline,
+        stopPipeline,
+        setModel,
+        getLatestFeatures,
+        getEarThreshold,
+      }}
+    >
       {children}
+      {isInitializing && (
+        <div className="pointer-events-none fixed right-4 bottom-4 z-[99998] rounded-lg border border-border bg-popover/95 px-3 py-2 text-xs text-popover-foreground shadow-lg">
+          Đang khởi động hệ thống nhận diện...
+        </div>
+      )}
+      {initializationError && (
+        <div className="pointer-events-none fixed right-4 bottom-4 z-[99998] rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow-lg">
+          Lỗi khởi tạo gaze: {initializationError}
+        </div>
+      )}
     </GazeContext.Provider>
   );
 }

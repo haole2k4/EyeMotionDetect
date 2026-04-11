@@ -3,7 +3,14 @@
 import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Card } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 export default function ExamStartPage({ params }: { params: Promise<{ id: string }> }) {
@@ -39,37 +46,51 @@ export default function ExamStartPage({ params }: { params: Promise<{ id: string
     }
   };
 
-  if (!exam) return <div className="p-12 text-3xl font-bold">Đang tải...</div>;
+  if (!exam) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-base font-medium text-muted-foreground">Đang tải bài thi...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-full items-center justify-center py-10 px-4">
-      <Card className="p-8 rounded-3xl shadow-xl border border-slate-100 bg-white max-w-xl w-full">
-        <h1 className="text-3xl font-bold text-slate-800 text-center mb-4">{exam.title}</h1>
-        <p className="text-base text-slate-600 text-center mb-8">
-          {exam.description || 'Bài thi với giao diện thân thiện với Eye-Tracking. Hãy chuẩn bị sẵn sàng mắt của bạn.'}
-        </p>
+    <section className="flex min-h-[70vh] items-center justify-center px-4 py-8">
+      <Card className="w-full max-w-2xl">
+        <CardHeader className="items-center text-center">
+          <CardTitle className="text-3xl font-semibold">{exam.title}</CardTitle>
+          <CardDescription className="max-w-xl text-base">
+            {exam.description || 'Bài thi với giao diện thân thiện với Eye-Tracking. Hãy chuẩn bị sẵn sàng trước khi bắt đầu.'}
+          </CardDescription>
+        </CardHeader>
 
-        <div className="space-y-4 bg-blue-50/50 p-6 rounded-2xl border border-blue-100 mb-8">
-          <h2 className="text-lg font-semibold text-blue-900">Thông tin bài thi:</h2>
-          <div className="flex justify-between items-center bg-white p-3 rounded-lg border border-blue-50/50">
-            <span className="text-slate-600 font-medium">Số câu hỏi</span>
-            <span className="text-blue-700 font-bold">{exam.questions?.length || 0}</span>
+        <CardContent>
+          <div className="space-y-3 rounded-xl border bg-muted/40 p-4">
+            <h2 className="text-base font-semibold">Thông tin bài thi</h2>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
+                <span className="font-medium text-muted-foreground">Số câu hỏi</span>
+                <span className="font-semibold">{exam.questions?.length || 0}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
+                <span className="font-medium text-muted-foreground">Thời gian làm bài</span>
+                <span className="font-semibold">{exam.duration ? `${exam.duration} phút` : 'Không giới hạn'}</span>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between items-center bg-white p-3 rounded-lg border border-blue-50/50">
-            <span className="text-slate-600 font-medium">Thời gian làm bài</span>
-            <span className="text-blue-700 font-bold">{exam.duration ? `${exam.duration} phút` : 'Không giới hạn'}</span>
-          </div>
-        </div>
+        </CardContent>
 
-        <Button
-          onClick={handleStart}
-          disabled={loading}
-          size="lg"
-          className="w-full text-xl font-bold h-14 rounded-xl bg-blue-600 text-white shadow-md hover:bg-blue-700 transition-all active:scale-[0.98]"
-        >
-          {loading ? 'Đang chuẩn bị...' : 'BẮT ĐẦU THI'}
-        </Button>
+        <CardFooter className="justify-end">
+          <Button
+            onClick={handleStart}
+            disabled={loading}
+            size="lg"
+            className="h-11 w-full text-base font-semibold md:w-auto"
+          >
+            {loading ? 'Đang chuẩn bị...' : 'Bắt đầu thi'}
+          </Button>
+        </CardFooter>
       </Card>
-    </div>
+    </section>
   );
 }

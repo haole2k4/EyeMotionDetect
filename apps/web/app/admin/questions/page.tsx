@@ -21,6 +21,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -164,12 +171,17 @@ export default function Questions() {
     }
   }, [currentAnswer, normalizedOptions, setValue]);
 
-  if (isLoading) return <div className="p-8 text-gray-500">Đang tải danh sách câu hỏi...</div>;
+  const answerOptions = normalizedOptions.filter((option) => option.length > 0);
+
+  if (isLoading) return <div className="p-8 text-muted-foreground">Đang tải danh sách câu hỏi...</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">Quản lý câu hỏi</h1>
+        <div className="space-y-1">
+          <h1 className="text-3xl font-semibold tracking-tight">Quản lý câu hỏi</h1>
+          <p className="text-sm text-muted-foreground">Tạo, cập nhật và gán đáp án đúng cho ngân hàng câu hỏi.</p>
+        </div>
         <Button onClick={() => setIsDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Thêm câu hỏi
         </Button>
@@ -185,44 +197,51 @@ export default function Questions() {
               <div className="space-y-2">
                 <Label>Nội dung câu hỏi</Label>
                 <Input {...register('content')} placeholder="Nhập nội dung câu hỏi..." />
-                {errors.content && <p className="text-red-500 text-sm">{errors.content.message}</p>}
+                {errors.content && <p className="text-destructive text-sm">{errors.content.message}</p>}
               </div>
 
               <div className="space-y-4">
                 <Label>Các đáp án</Label>
-                <input type="hidden" {...register('correctAnswer')} />
                 {[0, 1, 2, 3].map((index) => (
-                  <div key={index} className="flex gap-2 items-center">
-                    <span className="font-medium text-sm flex-none w-20">Lựa chọn {index + 1}:</span>
-                    <div className="w-full">
+                  <div key={index} className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Lựa chọn {index + 1}</Label>
+                    <div>
                       <Input {...register(`options.${index}` as const)} placeholder={`Nhập đáp án ${index + 1}...`} />
-                      {errors.options?.[index] && <p className="text-red-500 text-sm">{errors.options[index]?.message}</p>}
+                      {errors.options?.[index] && <p className="text-destructive text-sm">{errors.options[index]?.message}</p>}
                     </div>
-
-                    <label
-                      className={`flex min-w-16 items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors ${
-                        normalizedOptions[index].length > 0 ? 'cursor-pointer hover:bg-muted/60' : 'cursor-not-allowed opacity-50'
-                      } ${currentAnswer === normalizedOptions[index] && normalizedOptions[index].length > 0 ? 'bg-muted' : ''}`}
-                    >
-                      <input
-                        type="radio"
-                        name="correct-answer-picker"
-                        className="h-4 w-4"
-                        checked={normalizedOptions[index].length > 0 && currentAnswer === normalizedOptions[index]}
-                        disabled={normalizedOptions[index].length === 0}
-                        onChange={() => {
-                          setValue('correctAnswer', normalizedOptions[index], {
-                            shouldDirty: true,
-                            shouldTouch: true,
-                            shouldValidate: true,
-                          });
-                        }}
-                      />
-                      <span>Đúng</span>
-                    </label>
                   </div>
                 ))}
-                {errors.correctAnswer && <p className="text-red-500 text-sm">{errors.correctAnswer.message}</p>}
+                {errors.correctAnswer && <p className="text-destructive text-sm">{errors.correctAnswer.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Đáp án đúng</Label>
+                <Controller
+                  name="correctAnswer"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || undefined}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn đáp án đúng" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {answerOptions.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Bạn cần nhập nội dung đáp án trước khi có thể chọn đáp án đúng.
+                </p>
               </div>
 
               <div className="max-w-52 space-y-2">
@@ -243,7 +262,7 @@ export default function Questions() {
                     </Select>
                   )}
                 />
-                {errors.difficulty && <p className="text-red-500 text-sm">{errors.difficulty.message}</p>}
+                {errors.difficulty && <p className="text-destructive text-sm">{errors.difficulty.message}</p>}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
@@ -257,7 +276,12 @@ export default function Questions() {
         </Dialog>
       </div>
 
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
+      <Card>
+        <CardHeader>
+          <CardTitle>Danh sách câu hỏi</CardTitle>
+          <CardDescription>{questions?.length || 0} câu hỏi trong ngân hàng hiện tại.</CardDescription>
+        </CardHeader>
+        <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
@@ -281,15 +305,11 @@ export default function Questions() {
                   <TableCell>
                     <div className="font-medium">{q.content}</div>
                     <div className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                      {q.options.join(' | ')} (Đúng: <span className="font-semibold text-green-600">{q.correctAnswer}</span>)
+                      {q.options.join(' | ')} (Đúng: <span className="font-semibold">{q.correctAnswer}</span>)
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      q.difficulty === 'EASY' ? 'bg-green-100 text-green-800' :
-                      q.difficulty === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
+                    <span className="inline-flex items-center rounded-full border bg-muted px-2.5 py-0.5 text-xs font-semibold text-foreground">
                       {q.difficulty === 'EASY' ? 'Dễ' : q.difficulty === 'MEDIUM' ? 'Trung bình' : 'Khó'}
                     </span>
                   </TableCell>
@@ -297,7 +317,7 @@ export default function Questions() {
                     <Button variant="ghost" size="icon" onClick={() => openEditDialog(q)}>
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(q.id)} className="text-red-500 hover:text-red-700">
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(q.id)} className="text-destructive hover:text-destructive">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>
@@ -306,7 +326,8 @@ export default function Questions() {
             )}
           </TableBody>
         </Table>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

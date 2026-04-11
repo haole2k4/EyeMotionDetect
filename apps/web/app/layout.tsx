@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { GazeProvider } from "../components/gaze/GazeProvider";
-import { DebugOverlay } from "../components/gaze/DebugOverlay";
 import { Providers } from "./providers";
 
 const geistSans = Geist({
@@ -28,12 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased font-sans`}>
-        <Providers>
-          <GazeProvider>
-            {children}
-            <DebugOverlay />
-          </GazeProvider>
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

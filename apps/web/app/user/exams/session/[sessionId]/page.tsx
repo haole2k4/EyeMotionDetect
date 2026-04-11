@@ -4,7 +4,6 @@ import { use, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { MCQBoard } from '@/components/mcq/MCQBoard';
-import { GazeProvider } from '@/components/gaze/GazeProvider';
 
 export default function ExamSessionFocusMode({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = use(params);
@@ -157,39 +156,37 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   };
 
   return (
-    <GazeProvider>
-      <div className="fixed inset-0 z-[100] w-screen h-screen bg-gray-900 overflow-hidden">
-        {/* Top Progress Bar */}
-        <div className="absolute top-2 left-0 w-full flex justify-center gap-1 z-50 px-4">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          {questions.map((q: any, i: number) => {
-            const isAnswered = answeredQuestionIds.has(q.id);
-            const isCurrent = i === currentIndex;
-            let bgColor = 'bg-blue-500/20';
-            if (isCurrent) bgColor = 'bg-blue-500';
-            else if (isAnswered) bgColor = 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]';
+    <div className="fixed inset-0 z-[100] h-screen w-screen overflow-hidden bg-gray-900">
+      {/* Top Progress Bar */}
+      <div className="absolute top-2 left-0 z-50 flex w-full justify-center gap-1 px-4">
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        {questions.map((q: any, i: number) => {
+          const isAnswered = answeredQuestionIds.has(q.id);
+          const isCurrent = i === currentIndex;
+          let bgColor = 'bg-blue-500/20';
+          if (isCurrent) bgColor = 'bg-blue-500';
+          else if (isAnswered) bgColor = 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]';
 
-            return (
-              <div
-                key={i}
-                className={`h-1 flex-1 rounded-full transition-all duration-300 ${bgColor}`}
-              />
-            );
-          })}
-        </div>
-
-        {/* Content Board */}
-        <div className="w-full h-full">
-          <MCQBoard
-            question={currentQuestion.content}
-            options={optionsObj}
-            onAnswerSelected={handleAnswer}
-            onPrev={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
-            onNext={() => setCurrentIndex((prev) => Math.min(prev + 1, questions.length - 1))}
-            onSubmit={handleManualFinish}
-          />
-        </div>
+          return (
+            <div
+              key={i}
+              className={`h-1 flex-1 rounded-full transition-all duration-300 ${bgColor}`}
+            />
+          );
+        })}
       </div>
-    </GazeProvider>
+
+      {/* Content Board */}
+      <div className="h-full w-full">
+        <MCQBoard
+          question={currentQuestion.content}
+          options={optionsObj}
+          onAnswerSelected={handleAnswer}
+          onPrev={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
+          onNext={() => setCurrentIndex((prev) => Math.min(prev + 1, questions.length - 1))}
+          onSubmit={handleManualFinish}
+        />
+      </div>
+    </div>
   );
 }

@@ -32,14 +32,14 @@ interface DashboardUser {
 }
 
 const createUserSchema = z.object({
-  username: z.string().min(3, 'Ten dang nhap toi thieu 3 ky tu').max(50, 'Ten dang nhap toi da 50 ky tu'),
+  username: z.string().min(3, 'Tên đăng nhập tối thiểu 3 ký tự').max(50, 'Tên đăng nhập tối đa 50 ký tự'),
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu tối thiểu 6 ký tự'),
   role: z.enum(['admin', 'user']),
 });
 
 const editUserSchema = z.object({
-  username: z.string().min(3, 'Ten dang nhap toi thieu 3 ky tu').max(50, 'Ten dang nhap toi da 50 ky tu'),
+  username: z.string().min(3, 'Tên đăng nhập tối thiểu 3 ký tự').max(50, 'Tên đăng nhập tối đa 50 ký tự'),
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu mới tối thiểu 6 ký tự').or(z.literal('')),
   role: z.enum(['admin', 'user']),
@@ -120,7 +120,7 @@ export default function UsersManagement() {
   });
 
   const queryErrorMessage = usersQuery.isError
-    ? getErrorMessage(usersQuery.error, 'Khong the tai danh sach nguoi dung. Kiem tra backend va ket noi API.')
+    ? getErrorMessage(usersQuery.error, 'Không thể tải danh sách người dùng. Kiểm tra backend và kết nối API.')
     : null;
 
   const createUserMutation = useMutation({

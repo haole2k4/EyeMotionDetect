@@ -3,7 +3,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { Card } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 interface Exam {
@@ -43,37 +50,45 @@ export default function UserDashboard() {
     fetchData();
   }, []);
 
+  const completedSessions = sessions.filter((session) => session.status === 'COMPLETED');
+
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-2xl font-bold mb-6 text-slate-800">Bài Thi Của Tôi</h1>
+        <div className="mb-6 space-y-1">
+          <h1 className="text-2xl font-semibold">Bài thi của tôi</h1>
+          <p className="text-sm text-muted-foreground">Chọn bài thi được giao và bắt đầu ngay trong chế độ focus.</p>
+        </div>
+
         {assignedExams.length === 0 ? (
-          <p className="text-sm text-slate-500 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            Bạn chưa được giao bài thi nào.
-          </p>
+          <Card>
+            <CardContent className="py-6 text-sm text-muted-foreground">Bạn chưa được giao bài thi nào.</CardContent>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {assignedExams.map((exam) => {
-              // Tìm xem đã có session nào chưa (có thể đang làm dở)
               const session = sessions.find((s) => s.exam.id === exam.id && s.status === 'IN_PROGRESS');
 
               return (
-                <Card key={exam.id} className="hover:shadow-md transition-all rounded-xl p-5 bg-white flex flex-col justify-between h-auto gap-6 border-slate-200 border">
-                  <div className="space-y-2">
-                    <h2 className="text-lg font-semibold text-slate-900">{exam.title}</h2>
-                    {exam.timeLimit && (
-                      <p className="text-sm text-slate-500">
-                        Thời gian: <span className="font-medium text-slate-700">{exam.timeLimit} phút</span>
-                      </p>
-                    )}
-                  </div>
-                  <div className="pt-2 border-t border-slate-100">
+                <Card key={exam.id} className="transition-shadow hover:shadow-md">
+                  <CardHeader>
+                    <CardTitle>{exam.title}</CardTitle>
+                    <CardDescription>
+                      {exam.timeLimit ? `Thời gian: ${exam.timeLimit} phút` : 'Không giới hạn thời gian'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="inline-flex rounded-full border bg-muted px-2 py-1 text-xs text-muted-foreground">
+                      {session ? 'Đang có phiên làm bài đang dở' : 'Sẵn sàng bắt đầu phiên mới'}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="justify-end">
                     <Link href={`/user/exams/${exam.id}/start`} className="block w-full">
-                      <Button size="default" className="w-full shadow-sm font-medium">
+                      <Button size="default" className="w-full">
                         {session ? 'Tiếp tục làm bài' : 'Bắt đầu ngay'}
                       </Button>
                     </Link>
-                  </div>
+                  </CardFooter>
                 </Card>
               );
             })}
@@ -82,28 +97,31 @@ export default function UserDashboard() {
       </section>
 
       <section>
-        <h2 className="text-xl font-bold mb-6 text-slate-800 pt-6">Lịch Sử Làm Bài</h2>
-        {sessions.filter(s => s.status === 'COMPLETED').length === 0 ? (
-          <p className="text-sm text-slate-500 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            Chưa có lịch sử làm bài.
-          </p>
+        <div className="mb-6 space-y-1 border-t pt-6">
+          <h2 className="text-xl font-semibold">Lịch sử làm bài</h2>
+          <p className="text-sm text-muted-foreground">Tổng hợp kết quả các bài thi đã hoàn thành.</p>
+        </div>
+
+        {completedSessions.length === 0 ? (
+          <Card>
+            <CardContent className="py-6 text-sm text-muted-foreground">Chưa có lịch sử làm bài.</CardContent>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {sessions
-              .filter(s => s.status === 'COMPLETED')
-              .map((session) => (
-              <Card key={session.id} className="p-5 rounded-xl bg-white border border-slate-200 hover:shadow-md transition-all">
-                <div className="flex flex-col space-y-1">
-                  <h3 className="text-base font-semibold text-slate-800">{session.exam.title}</h3>
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-slate-500">
-                      Thi ngày: {new Date(session.startTime).toLocaleDateString('vi-VN')}
-                    </p>
-                    <span className="font-bold text-green-600 text-lg">
-                      {session.score?.toFixed(1)}%
-                    </span>
+            {completedSessions.map((session) => (
+              <Card key={session.id} className="transition-shadow hover:shadow-md">
+                <CardHeader>
+                  <CardTitle className="text-base">{session.exam.title}</CardTitle>
+                  <CardDescription>
+                    Thi ngày: {new Date(session.startTime).toLocaleDateString('vi-VN')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+                    <span className="text-sm text-muted-foreground">Điểm số</span>
+                    <span className="text-lg font-semibold">{session.score?.toFixed(1)}%</span>
                   </div>
-                </div>
+                </CardContent>
               </Card>
             ))}
           </div>
