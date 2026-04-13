@@ -19,11 +19,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [token, userStr, router]);
 
   if (!mounted || !token || !userStr || userStr.role !== 'admin') {
-    return <div className="h-screen w-screen bg-gray-50 flex items-center justify-center">Đang tải...</div>;
+    return <div className="h-screen w-screen bg-background flex items-center justify-center">Đang tải...</div>;
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <main className="flex-1 overflow-y-auto p-8">
         <div className="mx-auto max-w-6xl">

@@ -1,8 +1,10 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 import {
   Card,
   CardContent,
@@ -56,8 +58,13 @@ export default function ExamStartPage({ params }: { params: Promise<{ id: string
 
   return (
     <section className="flex min-h-[70vh] items-center justify-center px-4 py-8">
-      <Card className="w-full max-w-2xl">
-        <CardHeader className="items-center text-center">
+      <Card className="w-full max-w-2xl relative shadow-lg">
+        <Link href="/user/dashboard">
+          <Button variant="ghost" className="absolute left-2 top-2 text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Quay lại
+          </Button>
+        </Link>
+        <CardHeader className="items-center text-center pt-10">
           <CardTitle className="text-3xl font-semibold">{exam.title}</CardTitle>
           <CardDescription className="max-w-xl text-base">
             {exam.description || 'Bài thi với giao diện thân thiện với Eye-Tracking. Hãy chuẩn bị sẵn sàng trước khi bắt đầu.'}

@@ -11,6 +11,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState({ username: '', email: '' });
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState({ text: '', type: '' });
 
   useEffect(() => {
@@ -29,6 +30,13 @@ export default function SettingsPage() {
     e.preventDefault();
     setLoading(true);
     setMessage({ text: '', type: '' });
+    
+    if (password && password !== confirmPassword) {
+      setMessage({ text: 'Mật khẩu xác nhận không khớp', type: 'error' });
+      setLoading(false);
+      return;
+    }
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: any = { username: profile.username, email: profile.email };
@@ -36,6 +44,7 @@ export default function SettingsPage() {
       await api.put('/users/me', payload);
       setMessage({ text: 'Cập nhật thành công', type: 'success' });
       setPassword('');
+      setConfirmPassword('');
     } catch (error) {
       console.error(error);
       setMessage({ text: 'Cập nhật thất bại', type: 'error' });
@@ -83,6 +92,16 @@ export default function SettingsPage() {
                 type="password" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="********"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Xác nhận mật khẩu mới</Label>
+              <Input 
+                id="confirmPassword" 
+                type="password" 
+                value={confirmPassword} 
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="********"
               />
             </div>

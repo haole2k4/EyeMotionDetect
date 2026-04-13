@@ -131,7 +131,7 @@ export default function ExamsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">Quản lý bài thi</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý bài thi</h1>
         <Button onClick={() => setIsDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Thêm bài thi
         </Button>

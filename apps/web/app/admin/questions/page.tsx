@@ -309,7 +309,13 @@ export default function Questions() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="inline-flex items-center rounded-full border bg-muted px-2.5 py-0.5 text-xs font-semibold text-foreground">
+                    <span className={`inline-flex items-center justify-center min-w-[76px] rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      q.difficulty === 'EASY' 
+                        ? 'border border-emerald-500/30 bg-emerald-500/20 text-emerald-400' 
+                        : q.difficulty === 'MEDIUM'
+                        ? 'border border-amber-500/30 bg-amber-500/20 text-amber-400'
+                        : 'border border-rose-500/30 bg-rose-500/20 text-rose-400'
+                    }`}>
                       {q.difficulty === 'EASY' ? 'Dễ' : q.difficulty === 'MEDIUM' ? 'Trung bình' : 'Khó'}
                     </span>
                   </TableCell>

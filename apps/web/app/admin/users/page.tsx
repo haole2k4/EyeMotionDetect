@@ -264,8 +264,8 @@ export default function UsersManagement() {
     >
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Quản lý người dùng</h1>
-          <p className="mt-1 text-sm text-gray-500">Thêm, chỉnh sửa, xóa và tìm kiếm tài khoản người dùng.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý người dùng</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Thêm, chỉnh sửa, xóa và tìm kiếm tài khoản người dùng.</p>
         </div>
 
         <Button
@@ -293,9 +293,9 @@ export default function UsersManagement() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:flex-row md:items-center md:justify-between">
         <div className="relative w-full max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
@@ -304,15 +304,15 @@ export default function UsersManagement() {
           />
         </div>
 
-        <p className="text-sm font-medium text-gray-500">
+        <p className="text-sm font-medium text-muted-foreground">
           Hiển thị {filteredUsers.length}/{totalUsers} người dùng
         </p>
       </div>
 
-      <Card className="rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <Card className="rounded-2xl border border-border bg-card shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full whitespace-nowrap text-left text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/60 text-gray-500">
+            <thead className="border-b border-border bg-muted/30 text-muted-foreground">
               <tr>
                 <th className="px-6 py-4 font-semibold">Email</th>
                 <th className="px-6 py-4 font-semibold">Tên đăng nhập</th>
@@ -322,7 +322,7 @@ export default function UsersManagement() {
                 <th className="px-6 py-4 font-semibold">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {usersQuery.isPending ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
@@ -359,14 +359,14 @@ export default function UsersManagement() {
                       transition={{ delay: index * 0.04 }}
                       className="hover:bg-blue-50/30"
                     >
-                      <td className="px-6 py-4 font-semibold text-gray-800">{user.email}</td>
-                      <td className="px-6 py-4 text-gray-700">{user.username}</td>
+                      <td className="px-6 py-4 font-semibold text-foreground">{user.email}</td>
+                      <td className="px-6 py-4 text-foreground">{user.username}</td>
                       <td className="px-6 py-4">
                         <span
                           className={`rounded-md px-3 py-1 text-xs font-semibold ${
                             user.role === 'admin'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-gray-100 text-gray-700'
+                              ? 'bg-purple-500/20 text-purple-400'
+                              : 'bg-slate-500/20 text-slate-300'
                           }`}
                         >
                           {user.role === 'admin' ? 'Quản trị viên' : 'Học viên'}
@@ -376,14 +376,14 @@ export default function UsersManagement() {
                         <span
                           className={`rounded-md border px-3 py-1 text-xs font-semibold ${
                             user.calibrated
-                              ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
-                              : 'border-rose-200 bg-rose-100 text-rose-700'
+                              ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-400'
+                              : 'border-rose-500/30 bg-rose-500/20 text-rose-400'
                           }`}
                         >
                           {user.calibrated ? 'Đã thiết lập' : 'Chưa thiết lập'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-gray-500">
+                      <td className="px-6 py-4 text-muted-foreground">
                         {new Date(user.createdAt).toLocaleDateString('vi-VN')}
                       </td>
                       <td className="px-6 py-4">
@@ -486,10 +486,10 @@ export default function UsersManagement() {
               <select
                 id="create-user-role"
                 {...createForm.register('role')}
-                className="h-8 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
+                className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
               >
-                <option value="user">Học viên</option>
-                <option value="admin">Quản trị viên</option>
+                <option value="user" className="bg-card text-foreground">Học viên</option>
+                <option value="admin" className="bg-card text-foreground">Quản trị viên</option>
               </select>
             </div>
 
@@ -590,10 +590,10 @@ export default function UsersManagement() {
               <select
                 id="edit-user-role"
                 {...editForm.register('role')}
-                className="h-8 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
+                className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
               >
-                <option value="user">Học viên</option>
-                <option value="admin">Quản trị viên</option>
+                <option value="user" className="bg-card text-foreground">Học viên</option>
+                <option value="admin" className="bg-card text-foreground">Quản trị viên</option>
               </select>
             </div>
 

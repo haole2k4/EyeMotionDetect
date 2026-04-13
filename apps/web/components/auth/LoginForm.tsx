@@ -67,12 +67,12 @@ export function LoginForm() {
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="flex min-h-screen items-center justify-center p-4 bg-gray-50"
+      className="flex min-h-screen items-center justify-center p-4 bg-background"
     >
-      <Card className="w-full max-w-md shadow-lg border-t-4 border-t-blue-500">
+      <Card className="w-full max-w-md shadow-lg border-t-4 border-t-primary">
         <CardHeader className="space-y-1 text-center">
           <CardTitle className="text-2xl font-bold tracking-tight">Login</CardTitle>
-          <CardDescription className="text-gray-500">
+          <CardDescription className="text-muted-foreground">
             Sign in to access your dashboard
           </CardDescription>
         </CardHeader>

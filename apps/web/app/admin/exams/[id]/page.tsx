@@ -129,15 +129,15 @@ export default function ExamDetailsPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Cấu hình: {exam.title}</h1>
-          <p className="text-sm text-gray-500">Thời gian: {exam.duration} phút</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Cấu hình: {exam.title}</h1>
+          <p className="text-sm text-muted-foreground">Thời gian: {exam.duration} phút</p>
         </div>
       </div>
 
       <div className="flex space-x-1 border-b">
         <button
           className={`px-4 py-2 font-medium text-sm rounded-t-lg transition-colors ${
-            activeTab === 'questions' ? 'bg-primary text-primary-foreground' : 'text-gray-500 hover:text-gray-900'
+            activeTab === 'questions' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
           }`}
           onClick={() => setActiveTab('questions')}
         >
@@ -145,7 +145,7 @@ export default function ExamDetailsPage() {
         </button>
         <button
           className={`px-4 py-2 font-medium text-sm rounded-t-lg transition-colors ${
-            activeTab === 'users' ? 'bg-primary text-primary-foreground' : 'text-gray-500 hover:text-gray-900'
+            activeTab === 'users' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
           }`}
           onClick={() => setActiveTab('users')}
         >
@@ -185,10 +185,10 @@ export default function ExamDetailsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          q.difficulty === 'EASY' ? 'bg-green-100 text-green-800' :
-                          q.difficulty === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
+                        <span className={`inline-flex items-center justify-center min-w-[76px] rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          q.difficulty === 'EASY' ? 'border border-emerald-500/30 bg-emerald-500/20 text-emerald-400' :
+                          q.difficulty === 'MEDIUM' ? 'border border-amber-500/30 bg-amber-500/20 text-amber-400' :
+                          'border border-rose-500/30 bg-rose-500/20 text-rose-400'
                         }`}>
                           {q.difficulty}
                         </span>

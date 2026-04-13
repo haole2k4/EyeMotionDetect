@@ -32,13 +32,13 @@ export function AdminSidebar() {
     <motion.aside 
       initial={{ x: -250 }}
       animate={{ x: 0 }}
-      className="w-64 bg-white border-r h-screen shadow-sm flex flex-col"
+      className="w-64 bg-card border-r border-border h-screen shadow-sm flex flex-col"
     >
       <div className="p-6">
-        <h2 className="text-2xl font-bold tracking-tight text-blue-600">EyeMotion</h2>
-        <p className="text-sm text-gray-500 font-medium">Detector Admin</p>
+        <h2 className="text-2xl font-bold tracking-tight text-primary">EyeMotion</h2>
+        <p className="text-sm text-muted-foreground font-medium">Detector Admin</p>
         {user?.username ? (
-          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/60">
             @{user.username}
           </p>
         ) : null}
@@ -55,15 +55,15 @@ export function AdminSidebar() {
               <span className={cn(
                 'flex relative z-10 items-center justify-start gap-4 px-4 py-3 rounded-xl text-sm font-semibold transition-colors',
                 isActive 
-                  ? 'text-blue-700' 
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  ? 'text-primary' 
+                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
               )}>
-                <item.icon className={cn('h-5 w-5', isActive ? 'text-blue-600' : 'text-gray-400')} />
+                <item.icon className={cn('h-5 w-5', isActive ? 'text-primary' : 'text-muted-foreground/70')} />
                 {item.label}
               </span>
               {isActive && (
                 <motion.div
-                  className="absolute inset-0 rounded-xl bg-blue-50 border border-blue-200 shadow-sm"
+                  className="absolute inset-0 rounded-xl bg-primary/10 border border-primary/20 shadow-sm"
                   layoutId="activeNavIndicator"
                   transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                 />
@@ -78,7 +78,7 @@ export function AdminSidebar() {
       <div className="p-4">
         <Button 
           variant="ghost" 
-          className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+          className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
           onClick={handleLogout}
         >
           <LogOut className="mr-2 h-5 w-5" />

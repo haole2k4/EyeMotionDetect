@@ -70,8 +70,9 @@ export default function UserDashboard() {
               const session = sessions.find((s) => s.exam.id === exam.id && s.status === 'IN_PROGRESS');
 
               return (
-                <Card key={exam.id} className="transition-shadow hover:shadow-md">
-                  <CardHeader>
+              <Card key={exam.id} className="transition-all hover:shadow-md hover:border-primary/50 relative group overflow-hidden">
+                <div className="absolute left-0 top-0 h-full w-1 bg-primary/20 group-hover:bg-primary transition-colors"></div>
+                <CardHeader>
                     <CardTitle>{exam.title}</CardTitle>
                     <CardDescription>
                       {exam.timeLimit ? `Thời gian: ${exam.timeLimit} phút` : 'Không giới hạn thời gian'}
@@ -107,9 +108,10 @@ export default function UserDashboard() {
             <CardContent className="py-6 text-sm text-muted-foreground">Chưa có lịch sử làm bài.</CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {completedSessions.map((session) => (
-              <Card key={session.id} className="transition-shadow hover:shadow-md">
+              <Card key={session.id} className="transition-all hover:shadow-md hover:border-primary/50 relative group overflow-hidden">
+                <div className="absolute left-0 top-0 h-full w-1 bg-primary/20 group-hover:bg-primary transition-colors"></div>
                 <CardHeader>
                   <CardTitle className="text-base">{session.exam.title}</CardTitle>
                   <CardDescription>
@@ -117,7 +119,7 @@ export default function UserDashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+                  <div className="flex items-center justify-between rounded-md border bg-primary/5 px-3 py-2">
                     <span className="text-sm text-muted-foreground">Điểm số</span>
                     <span className="text-lg font-semibold">{session.score?.toFixed(1)}%</span>
                   </div>
