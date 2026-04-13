@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  Relation,
 } from 'typeorm';
 import { User } from '../../users/user.entity';
 import { Exam } from './exam.entity';
@@ -24,11 +25,11 @@ export class ExamSession {
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
-  user!: User;
+  user!: Relation<User>;
 
   @ManyToOne(() => Exam, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'exam_id' })
-  exam!: Exam;
+  exam!: Relation<Exam>;
 
   @Column({ type: 'enum', enum: ExamStatus, default: ExamStatus.IN_PROGRESS })
   status!: ExamStatus;
@@ -43,7 +44,7 @@ export class ExamSession {
   endTime?: Date;
 
   @OneToMany(() => UserAnswer, (answer) => answer.session, { cascade: true })
-  answers!: UserAnswer[];
+  answers!: Relation<UserAnswer[]>;
 
   @CreateDateColumn()
   createdAt!: Date;

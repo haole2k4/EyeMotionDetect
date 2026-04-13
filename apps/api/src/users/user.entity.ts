@@ -4,6 +4,7 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   OneToOne,
+  Relation,
 } from 'typeorm';
 import { GazeWeights } from '../weights/weights.entity';
 
@@ -28,5 +29,5 @@ export class User {
   createdAt!: Date;
 
   @OneToOne(() => GazeWeights, (weights) => weights.user, { cascade: true })
-  gazeWeights?: GazeWeights;
+  gazeWeights?: Relation<GazeWeights>;
 }

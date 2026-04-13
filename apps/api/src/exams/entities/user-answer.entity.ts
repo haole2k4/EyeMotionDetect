@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Relation,
 } from 'typeorm';
 import { ExamSession } from './exam-session.entity';
 import { Question } from '../../questions/question.entity';
@@ -18,11 +19,11 @@ export class UserAnswer {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'session_id' })
-  session!: ExamSession;
+  session!: Relation<ExamSession>;
 
   @ManyToOne(() => Question, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'question_id' })
-  question!: Question;
+  question!: Relation<Question>;
 
   @Column({ type: 'varchar', nullable: true })
   selectedOption?: string;

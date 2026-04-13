@@ -5,6 +5,7 @@ import {
   UpdateDateColumn,
   OneToOne,
   JoinColumn,
+  Relation,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 
@@ -15,29 +16,29 @@ export class GazeWeights {
 
   @OneToOne(() => User)
   @JoinColumn()
-  user: User;
+  user!: Relation<User>;
 
   @Column('jsonb', { nullable: true })
-  polyCoeffsX: number[] | null;
+  polyCoeffsX!: number[] | null;
 
   @Column('jsonb', { nullable: true })
-  polyCoeffsY: number[] | null;
+  polyCoeffsY!: number[] | null;
 
   @Column('text', { nullable: true })
-  mlpWeightsJson: string | null;
+  mlpWeightsJson!: string | null;
 
   @Column('bytea', { nullable: true })
-  mlpWeightsBin: Buffer | null;
+  mlpWeightsBin!: Buffer | null;
 
   @Column('float', { default: 0.21 })
-  earThreshold: number;
+  earThreshold!: number;
 
   @Column('int', { default: 0 })
-  calibrationPoints: number;
+  calibrationPoints!: number;
 
   @Column('float', { nullable: true })
-  lastMaePixels: number;
+  lastMaePixels!: number;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 }
