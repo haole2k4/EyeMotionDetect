@@ -4,9 +4,9 @@
   "description": "Eye Gaze Mouse Control",
   "private": true,
   "scripts": {
-    "build": "turbo build",
-    "dev": "cross-env NODE_OPTIONS=--no-experimental-webstorage turbo dev",
-    "lint": "turbo lint"
+    "build": "turbo run build",
+    "dev": "cross-env NODE_OPTIONS=--no-experimental-webstorage turbo run dev",
+    "lint": "turbo run lint"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
