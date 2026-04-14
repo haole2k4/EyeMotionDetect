@@ -10,6 +10,16 @@ interface CalibrationStatsPayload {
   earThreshold?: number;
 }
 
+interface PolyUpdatePayload {
+  coeffsX: number[];
+  coeffsY: number[];
+}
+
+interface MlpUpdatePayload {
+  mlpWeightsJson: string;
+  mlpWeightsBin: Buffer;
+}
+
 @Injectable()
 export class WeightsService {
   constructor(
@@ -46,8 +56,9 @@ export class WeightsService {
       weights = this.weightsRepo.create({ user: { id: userId } as User });
       await this.weightsRepo.save(weights);
       // Remove bin fields manually before return
-      delete (weights as any).mlpWeightsJson;
-      delete (weights as any).mlpWeightsBin;
+      const weightsMod = weights as Partial<GazeWeights>;
+      delete weightsMod.mlpWeightsJson;
+      delete weightsMod.mlpWeightsBin;
     }
     return weights;
   }
@@ -84,14 +95,14 @@ export class WeightsService {
     };
   }
 
-  async updatePoly(userId: string, data: any) {
+  async updatePoly(userId: string, data: PolyUpdatePayload) {
     const weights = await this.getWeights(userId);
     weights.polyCoeffsX = data.coeffsX;
     weights.polyCoeffsY = data.coeffsY;
     return this.weightsRepo.save(weights);
   }
 
-  async updateMlp(userId: string, data: any) {
+  async updateMlp(userId: string, data: MlpUpdatePayload) {
     const weights = await this.getWeights(userId);
     weights.mlpWeightsJson = data.mlpWeightsJson;
     weights.mlpWeightsBin = data.mlpWeightsBin;
@@ -105,7 +116,10 @@ export class WeightsService {
       typeof data.calibrationPoints === 'number' &&
       Number.isFinite(data.calibrationPoints)
     ) {
-      weights.calibrationPoints = Math.max(0, Math.round(data.calibrationPoints));
+      weights.calibrationPoints = Math.max(
+        0,
+        Math.round(data.calibrationPoints),
+      );
     }
 
     if (data.lastMaePixels === null) {
@@ -117,7 +131,10 @@ export class WeightsService {
       weights.lastMaePixels = data.lastMaePixels;
     }
 
-    if (typeof data.earThreshold === 'number' && Number.isFinite(data.earThreshold)) {
+    if (
+      typeof data.earThreshold === 'number' &&
+      Number.isFinite(data.earThreshold)
+    ) {
       weights.earThreshold = data.earThreshold;
     }
 

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Question } from './question.entity';
+import { Question, QuestionDifficulty } from './question.entity';
 import { CreateQuestionDto, UpdateQuestionDto } from './dto/question.dto';
 
 @Injectable()
@@ -28,7 +28,7 @@ export class QuestionsService {
       content: createQuestionDto.content,
       options: createQuestionDto.options,
       correctAnswer: createQuestionDto.correctAnswer,
-      difficulty: createQuestionDto.difficulty as any,
+      difficulty: createQuestionDto.difficulty as QuestionDifficulty,
     });
     return this.questionsRepository.save(question);
   }

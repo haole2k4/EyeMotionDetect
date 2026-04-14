@@ -12,6 +12,7 @@ import {
 import { ExamsService } from './exams.service';
 import { Exam } from './entities/exam.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import type { RequestWithUser } from '../auth/interfaces/request-with-user.interface';
 
 @UseGuards(JwtAuthGuard)
 @Controller('exams')
@@ -29,17 +30,20 @@ export class ExamsController {
   }
 
   @Get('user/assigned')
-  findAssignedExams(@Request() req: any) {
+  findAssignedExams(@Request() req: RequestWithUser) {
     return this.examsService.findAssignedExams(req.user.id);
   }
 
   @Get('sessions/my')
-  getMySessions(@Request() req: any) {
+  getMySessions(@Request() req: RequestWithUser) {
     return this.examsService.getMySessions(req.user.id);
   }
 
   @Get('sessions/:sessionId/active')
-  getActiveSession(@Param('sessionId') sessionId: string, @Request() req: any) {
+  getActiveSession(
+    @Param('sessionId') sessionId: string,
+    @Request() req: RequestWithUser,
+  ) {
     return this.examsService.getSession(sessionId, req.user.id);
   }
 
@@ -48,7 +52,7 @@ export class ExamsController {
     @Param('sessionId') sessionId: string,
     @Body()
     body: { questionId: string; selectedOption: string; dwellTimeMs: number },
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ) {
     return this.examsService.submitAnswer(
       sessionId,
@@ -60,7 +64,10 @@ export class ExamsController {
   }
 
   @Post('sessions/:sessionId/finish')
-  finishExam(@Param('sessionId') sessionId: string, @Request() req: any) {
+  finishExam(
+    @Param('sessionId') sessionId: string,
+    @Request() req: RequestWithUser,
+  ) {
     return this.examsService.finishExam(sessionId, req.user.id);
   }
 
@@ -70,7 +77,7 @@ export class ExamsController {
   }
 
   @Post(':id/start')
-  startExam(@Param('id') examId: string, @Request() req: any) {
+  startExam(@Param('id') examId: string, @Request() req: RequestWithUser) {
     return this.examsService.startExam(examId, req.user.id);
   }
 
