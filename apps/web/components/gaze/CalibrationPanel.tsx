@@ -12,6 +12,7 @@ import {
   saveCalibrationSamplesLocally,
   saveMLPLocally,
 } from "../../lib/gaze/storage";
+import { api } from "../../lib/api";
 import type { CalibrationSample, GazeFeatures } from "../../lib/gaze/types";
 import { useGaze } from "./GazeProvider";
 
@@ -278,9 +279,10 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       await GazeMLPModel.ensureBackendReady();
       const mlp = new GazeMLPModel();
       mlp.build();
-      await mlp.train(trainingSamples, currentWidth, currentHeight, (_, mae) => {
+      const { finalMae } = await mlp.train(trainingSamples, currentWidth, currentHeight, (_, mae) => {
         setTrainingMae(mae);
       });
+      setTrainingMae(finalMae);
       const serialized = await mlp.serialize();
 
       await saveMLPLocally(
@@ -292,6 +294,12 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       );
       await setModel("mlp", serialized);
       onModelApplied("mlp");
+
+      await api.put('/weights/stats', {
+        calibrationPoints: trainingSamples.length,
+        lastMaePixels: finalMae,
+        earThreshold: getEarThreshold(),
+      });
 
       await refreshStoredStats();
       setMessage(`Calibration thành công: ${trainingSamples.length} mẫu train, tổng ${totalRounds} vòng`);
@@ -319,6 +327,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     const ok = window.confirm("Bạn chắc chắn muốn xóa toàn bộ dữ liệu calibration và model đã lưu?");
     if (!ok) return;
 
+    await api.delete('/weights/me');
     await resetCalibrationLocally();
     await setModel("none");
     onModelApplied("fallback");

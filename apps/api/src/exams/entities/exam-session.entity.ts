@@ -7,8 +7,8 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
-  Relation,
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { User } from '../../users/user.entity';
 import { Exam } from './exam.entity';
 import { UserAnswer } from './user-answer.entity';

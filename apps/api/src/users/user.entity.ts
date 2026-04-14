@@ -4,8 +4,8 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   OneToOne,
-  Relation,
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { GazeWeights } from '../weights/weights.entity';
 
 @Entity('users')

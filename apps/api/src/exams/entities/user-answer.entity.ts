@@ -5,8 +5,8 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
-  Relation,
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { ExamSession } from './exam-session.entity';
 import { Question } from '../../questions/question.entity';
 

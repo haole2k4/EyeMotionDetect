@@ -5,14 +5,14 @@ import {
   UpdateDateColumn,
   OneToOne,
   JoinColumn,
-  Relation,
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { User } from '../users/user.entity';
 
 @Entity('gaze_weights')
 export class GazeWeights {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @OneToOne(() => User)
   @JoinColumn()
@@ -37,7 +37,7 @@ export class GazeWeights {
   calibrationPoints!: number;
 
   @Column('float', { nullable: true })
-  lastMaePixels!: number;
+  lastMaePixels!: number | null;
 
   @UpdateDateColumn()
   updatedAt!: Date;

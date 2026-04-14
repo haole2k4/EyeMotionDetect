@@ -81,9 +81,9 @@ export function MCQBoard({ question, options, onAnswerSelected, onPrev, onNext, 
         <GazeButton 
           id="NEXT" 
           onClick={onNext}
-          className="w-32 h-64 bg-gray-700/80 rounded-l-3xl shadow-xl border-r-0 hover:bg-gray-600 transition-colors"
+          className="w-48 h-24 bg-gray-700/80 rounded-l-3xl shadow-xl border-r-0 hover:bg-gray-600 transition-colors"
         >
-          <span className="text-2xl font-bold text-white rotate-90 whitespace-nowrap">Câu tiếp</span>
+          <span className="text-2xl font-bold text-white whitespace-nowrap">Câu tiếp</span>
         </GazeButton>
       </div>
 
