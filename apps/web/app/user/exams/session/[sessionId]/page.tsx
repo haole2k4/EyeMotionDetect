@@ -4,6 +4,7 @@ import { use, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { MCQBoard } from '@/components/mcq/MCQBoard';
+import { useGaze } from '@/components/gaze/GazeProvider';
 
 export default function ExamSessionFocusMode({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = use(params);
@@ -15,6 +16,43 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   const [loading, setLoading] = useState(true);
   const answerQueueRef = useRef<Promise<void>>(Promise.resolve());
   const finishingRef = useRef(false);
+
+  // Camera tracking integration
+  const { startPipeline, stopPipeline } = useGaze();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const startCamera = async () => {
+      if (!videoRef.current) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+          audio: false,
+        });
+        if (!active) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        startPipeline(videoRef.current);
+      } catch (err) {
+        console.error("Camera error:", err);
+      }
+    };
+    startCamera();
+
+    return () => {
+      active = false;
+      stopPipeline();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [startPipeline, stopPipeline]);
 
   // Fetch session data
   useEffect(() => {
@@ -137,56 +175,72 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
     );
   }, [session?.answers]);
 
-  if (loading || !session) {
-    return <div className="h-screen w-full flex items-center justify-center bg-gray-900 text-white text-3xl font-bold tracking-widest">ĐANG TẢI...</div>;
-  }
+  const renderContent = () => {
+    if (loading || !session) {
+      return <div className="h-full w-full flex items-center justify-center bg-gray-900 text-white text-3xl font-bold tracking-widest">ĐANG TẢI...</div>;
+    }
 
-  if (questions.length === 0) {
-    return <div className="p-12">Bài thi không có câu hỏi nào.</div>;
-  }
+    if (questions.length === 0) {
+      return <div className="p-12 text-white">Bài thi không có câu hỏi nào.</div>;
+    }
 
-  const currentQuestion = questions[currentIndex];
-  
-  // Format options for MCQBoard
-  const optionsObj = {
-    A: currentQuestion.options[0] || '',
-    B: currentQuestion.options[1] || '',
-    C: currentQuestion.options[2] || '',
-    D: currentQuestion.options[3] || '',
+    const currentQuestion = questions[currentIndex];
+    
+    // Format options for MCQBoard
+    const optionsObj = {
+      A: currentQuestion.options[0] || '',
+      B: currentQuestion.options[1] || '',
+      C: currentQuestion.options[2] || '',
+      D: currentQuestion.options[3] || '',
+    };
+
+    return (
+      <>
+        {/* Top Progress Bar */}
+        <div className="absolute top-2 left-0 z-50 flex w-full justify-center gap-1 px-4">
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {questions.map((q: any, i: number) => {
+            const isAnswered = answeredQuestionIds.has(q.id);
+            const isCurrent = i === currentIndex;
+            let bgColor = 'bg-blue-500/20';
+            if (isCurrent) bgColor = 'bg-blue-500';
+            else if (isAnswered) bgColor = 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]';
+
+            return (
+              <div
+                key={i}
+                className={`h-1 flex-1 rounded-full transition-all duration-300 ${bgColor}`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Content Board */}
+        <div className="h-full w-full">
+          <MCQBoard
+            question={currentQuestion.content}
+            options={optionsObj}
+            onAnswerSelected={handleAnswer}
+            onPrev={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
+            onNext={() => setCurrentIndex((prev) => Math.min(prev + 1, questions.length - 1))}
+            onSubmit={handleManualFinish}
+          />
+        </div>
+      </>
+    );
   };
 
   return (
     <div className="fixed inset-0 z-[100] h-screen w-screen overflow-hidden bg-gray-900">
-      {/* Top Progress Bar */}
-      <div className="absolute top-2 left-0 z-50 flex w-full justify-center gap-1 px-4">
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        {questions.map((q: any, i: number) => {
-          const isAnswered = answeredQuestionIds.has(q.id);
-          const isCurrent = i === currentIndex;
-          let bgColor = 'bg-blue-500/20';
-          if (isCurrent) bgColor = 'bg-blue-500';
-          else if (isAnswered) bgColor = 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]';
-
-          return (
-            <div
-              key={i}
-              className={`h-1 flex-1 rounded-full transition-all duration-300 ${bgColor}`}
-            />
-          );
-        })}
-      </div>
-
-      {/* Content Board */}
-      <div className="h-full w-full">
-        <MCQBoard
-          question={currentQuestion.content}
-          options={optionsObj}
-          onAnswerSelected={handleAnswer}
-          onPrev={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
-          onNext={() => setCurrentIndex((prev) => Math.min(prev + 1, questions.length - 1))}
-          onSubmit={handleManualFinish}
-        />
-      </div>
+      {/* Hidden Video Feed for Gaze Tracking */}
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        className="fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none z-[-1]"
+      />
+      {renderContent()}
     </div>
   );
 }
