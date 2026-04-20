@@ -5,13 +5,13 @@ const DB_NAME = 'gaze-store';
 const STORE_NAME = 'calibration';
 
 export interface StoredCalibration {
-  activeModel: 'polynomial' | 'mlp';
+  activeModel?: 'polynomial' | 'mlp';
   polyCoeffs?: { coeffsX: number[]; coeffsY: number[] };
   mlpModel?: { json: string; weights: ArrayBuffer };
   calibrationSamples?: CalibrationSample[];
   sampleCount?: number;
   rounds?: number;
-  earThreshold: number;
+  earThreshold?: number;
   savedAt: number;
 }
 
@@ -72,10 +72,8 @@ export async function saveMLPLocally(
 
 export async function saveCalibrationSamplesLocally(samples: CalibrationSample[], rounds: number) {
   const db = await initStorage();
-  const current = await db.get(STORE_NAME, 'current');
 
   await db.put(STORE_NAME, {
-    ...current,
     calibrationSamples: samples,
     sampleCount: samples.length,
     rounds,

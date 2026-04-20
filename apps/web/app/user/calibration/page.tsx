@@ -14,23 +14,25 @@ import { Button } from '@/components/ui/button';
 
 export default function CalibrationPage() {
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [profile, setProfile] = useState<any>(null);
+  const [weights, setWeights] = useState<{
+    calibrationPoints?: number;
+    lastMaePixels?: number | null;
+  } | null>(null);
 
   useEffect(() => {
-    async function loadProfile() {
+    async function loadWeights() {
       try {
-        const res = await api.get('/users/me');
-        setProfile(res.data);
+        const res = await api.get('/weights/me');
+        setWeights(res.data);
       } catch (error) {
-        console.error('Failed to load profile', error);
+        console.error('Failed to load calibration data', error);
       }
     }
-    loadProfile();
+    loadWeights();
   }, []);
 
-  const calibrationPoints = profile?.gazeWeights?.calibrationPoints || 0;
-  const lastMaePixels = profile?.gazeWeights?.lastMaePixels;
+  const calibrationPoints = weights?.calibrationPoints || 0;
+  const lastMaePixels = weights?.lastMaePixels;
 
   return (
     <section className="mx-auto w-full max-w-3xl space-y-6">

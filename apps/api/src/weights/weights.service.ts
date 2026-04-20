@@ -1,23 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GazeWeights } from './weights.entity';
 import { User } from '../users/user.entity';
+import type {
+  BufferJsonPayload,
+  MlpUpdatePayload,
+  PolyUpdatePayload,
+} from '../auth/interfaces/request-with-user.interface';
 
 interface CalibrationStatsPayload {
   calibrationPoints?: number;
   lastMaePixels?: number | null;
   earThreshold?: number;
-}
-
-interface PolyUpdatePayload {
-  coeffsX: number[];
-  coeffsY: number[];
-}
-
-interface MlpUpdatePayload {
-  mlpWeightsJson: string;
-  mlpWeightsBin: Buffer;
 }
 
 @Injectable()
@@ -99,13 +94,34 @@ export class WeightsService {
     const weights = await this.getWeights(userId);
     weights.polyCoeffsX = data.coeffsX;
     weights.polyCoeffsY = data.coeffsY;
+
+    if (
+      typeof data.calibrationPoints === 'number' &&
+      Number.isFinite(data.calibrationPoints)
+    ) {
+      weights.calibrationPoints = Math.max(
+        0,
+        Math.round(data.calibrationPoints),
+      );
+    }
+
+    if (
+      typeof data.earThreshold === 'number' &&
+      Number.isFinite(data.earThreshold)
+    ) {
+      weights.earThreshold = data.earThreshold;
+    }
+
     return this.weightsRepo.save(weights);
   }
 
   async updateMlp(userId: string, data: MlpUpdatePayload) {
     const weights = await this.getWeights(userId);
     weights.mlpWeightsJson = data.mlpWeightsJson;
-    weights.mlpWeightsBin = data.mlpWeightsBin;
+    weights.mlpWeightsBin = this.normalizeMlpWeightsBin(
+      data.mlpWeightsBin,
+      data.mlpWeightsEncoding,
+    );
     return this.weightsRepo.save(weights);
   }
 
@@ -151,5 +167,57 @@ export class WeightsService {
     weights.lastMaePixels = null;
     weights.earThreshold = 0.21;
     return this.weightsRepo.save(weights);
+  }
+
+  private normalizeMlpWeightsBin(
+    value: MlpUpdatePayload['mlpWeightsBin'],
+    encoding?: MlpUpdatePayload['mlpWeightsEncoding'],
+  ): Buffer {
+    if (Buffer.isBuffer(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      if (encoding && encoding !== 'base64') {
+        throw new BadRequestException(
+          'Unsupported mlpWeightsEncoding, only base64 is allowed',
+        );
+      }
+
+      const compact = value.trim();
+      if (!compact) {
+        throw new BadRequestException('mlpWeightsBin base64 payload is empty');
+      }
+
+      const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+      if (!base64Pattern.test(compact)) {
+        throw new BadRequestException('mlpWeightsBin must be a valid base64 string');
+      }
+
+      return Buffer.from(compact, 'base64');
+    }
+
+    if (this.isBufferJsonPayload(value)) {
+      return Buffer.from(value.data);
+    }
+
+    throw new BadRequestException(
+      'mlpWeightsBin must be Buffer, base64 string, or Buffer JSON payload',
+    );
+  }
+
+  private isBufferJsonPayload(value: unknown): value is BufferJsonPayload {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const payload = value as Partial<BufferJsonPayload>;
+    return (
+      payload.type === 'Buffer' &&
+      Array.isArray(payload.data) &&
+      payload.data.every(
+        (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
+      )
+    );
   }
 }

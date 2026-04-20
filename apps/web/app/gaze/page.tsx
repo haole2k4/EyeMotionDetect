@@ -5,7 +5,24 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { CalibrationPanel } from "@/components/gaze/CalibrationPanel";
 import { useGaze } from "@/components/gaze/GazeProvider";
-import { getCalibrationLocally } from "@/lib/gaze/storage";
+import { api } from "@/lib/api";
+import { decodeBinaryPayloadToArrayBuffer } from "@/lib/gaze/server-weights";
+
+interface ServerWeightsResponse {
+  polyCoeffsX: number[] | null;
+  polyCoeffsY: number[] | null;
+  mlpWeightsJson: string | null;
+  mlpWeightsBin: unknown;
+  earThreshold?: number;
+  calibrationPoints?: number;
+}
+
+function isFiniteNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
 
 function toPolyline(points: [number, number][]): string {
   return points.map(([x, y]) => `${(x * 100).toFixed(2)},${(y * 100).toFixed(2)}`).join(" ");
@@ -23,24 +40,30 @@ export default function GazePage() {
 
   useEffect(() => {
     const loadSavedModel = async () => {
-      const stored = await getCalibrationLocally();
-      if (!stored) {
+      try {
+        const { data } = await api.get<ServerWeightsResponse>("/weights");
+        const mlpWeights = decodeBinaryPayloadToArrayBuffer(data.mlpWeightsBin);
+        if (typeof data.mlpWeightsJson === "string" && mlpWeights) {
+          await setModel("mlp", { json: data.mlpWeightsJson, weights: mlpWeights });
+          setActiveMode("mlp");
+          return;
+        }
+
+        if (isFiniteNumberArray(data.polyCoeffsX) && isFiniteNumberArray(data.polyCoeffsY)) {
+          const poly = { coeffsX: data.polyCoeffsX, coeffsY: data.polyCoeffsY };
+          await setModel("polynomial", poly);
+          setActiveMode("polynomial");
+          return;
+        }
+
+        await setModel("none");
         setActiveMode("fallback");
         return;
+      } catch (error) {
+        console.warn("Failed to load gaze model from server", error);
       }
 
-      if (stored.activeModel === "polynomial" && stored.polyCoeffs) {
-        await setModel("polynomial", stored.polyCoeffs);
-        setActiveMode("polynomial");
-        return;
-      }
-
-      if (stored.activeModel === "mlp" && stored.mlpModel) {
-        await setModel("mlp", stored.mlpModel);
-        setActiveMode("mlp");
-        return;
-      }
-
+      await setModel("none");
       setActiveMode("fallback");
     };
 

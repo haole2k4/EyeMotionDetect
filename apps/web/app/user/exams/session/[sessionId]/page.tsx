@@ -5,6 +5,18 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { MCQBoard } from '@/components/mcq/MCQBoard';
 import { useGaze } from '@/components/gaze/GazeProvider';
+import { decodeBinaryPayloadToArrayBuffer } from '@/lib/gaze/server-weights';
+
+interface ServerWeightsResponse {
+  polyCoeffsX: number[] | null;
+  polyCoeffsY: number[] | null;
+  mlpWeightsJson: string | null;
+  mlpWeightsBin: unknown;
+}
+
+function isFiniteNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'number' && Number.isFinite(item));
+}
 
 export default function ExamSessionFocusMode({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = use(params);
@@ -18,15 +30,37 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   const finishingRef = useRef(false);
 
   // Camera tracking integration
-  const { startPipeline, stopPipeline } = useGaze();
+  const { startPipeline, stopPipeline, setModel } = useGaze();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const loadModelFromServer = useCallback(async () => {
+    try {
+      const { data } = await api.get<ServerWeightsResponse>('/weights');
+      const mlpWeights = decodeBinaryPayloadToArrayBuffer(data.mlpWeightsBin);
+
+      if (typeof data.mlpWeightsJson === 'string' && mlpWeights) {
+        await setModel('mlp', { json: data.mlpWeightsJson, weights: mlpWeights });
+        return;
+      }
+
+      if (isFiniteNumberArray(data.polyCoeffsX) && isFiniteNumberArray(data.polyCoeffsY)) {
+        await setModel('polynomial', { coeffsX: data.polyCoeffsX, coeffsY: data.polyCoeffsY });
+        return;
+      }
+    } catch (error) {
+      console.error('Load gaze model for exam failed:', error);
+    }
+
+    await setModel('none');
+  }, [setModel]);
 
   useEffect(() => {
     let active = true;
     const startCamera = async () => {
       if (!videoRef.current) return;
       try {
+        await loadModelFromServer();
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
           audio: false,
@@ -52,7 +86,7 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [startPipeline, stopPipeline]);
+  }, [loadModelFromServer, startPipeline, stopPipeline]);
 
   // Fetch session data
   useEffect(() => {

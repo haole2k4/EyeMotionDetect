@@ -67,6 +67,7 @@ interface GazeContextType {
   startPipeline: (video: HTMLVideoElement) => void;
   stopPipeline: () => void;
   setModel: (modelType: 'polynomial' | 'mlp' | 'none', weights?: PolynomialWeights | MLPWeights) => Promise<void>;
+  setInteractionMode: (mode: 'default' | 'confirm') => void;
   getLatestFeatures: () => GazeFeatures | null;
   getEarThreshold: () => number;
 }
@@ -110,6 +111,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const smootherRef = useRef(new GazeSmoother());
 
   const activeModelRef = useRef<'polynomial' | 'mlp' | 'none'>('none');
+  const interactionModeRef = useRef<'default' | 'confirm'>('default');
 
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(performance.now());
@@ -230,6 +232,13 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [dispatchMouseEvent]);
 
+  const setInteractionMode = useCallback((mode: 'default' | 'confirm') => {
+    interactionModeRef.current = mode;
+    regionRef.current = 'DEADZONE';
+    dwellStartRef.current = null;
+    currentDwellProgressRef.current = 0;
+  }, []);
+
   const loop = useCallback(async () => {
     if (!videoRef.current || !workerRef.current) {
       rafRef.current = requestAnimationFrame(loop);
@@ -322,12 +331,20 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     }
 
     const { row, col } = getGridCell(smoothed.x, smoothed.y, w, h);
-    const newRegion = getActionFromGrid(row, col) as RegionId;
+    const mappedRegion = getActionFromGrid(row, col) as RegionId;
+
+    const newRegion: RegionId = interactionModeRef.current === 'confirm'
+      ? (mappedRegion === 'SAFE_MARGIN' || mappedRegion === 'NEXT' || mappedRegion === 'DEADZONE'
+          ? mappedRegion
+          : 'DEADZONE')
+      : mappedRegion;
 
     let currentDwellRequirement = DEFAULT_DWELL_REQUIREMENT_MS;
     if (newRegion === 'SUBMIT') currentDwellRequirement = SUBMIT_DWELL_REQUIREMENT_MS;
 
-    const isSafeZone = (newRegion === 'DEADZONE' || newRegion === 'SAFE_MARGIN');
+    const isSafeZone = interactionModeRef.current === 'confirm'
+      ? newRegion === 'DEADZONE'
+      : (newRegion === 'DEADZONE' || newRegion === 'SAFE_MARGIN');
     const now = performance.now();
 
     if (newRegion !== regionRef.current) {
@@ -432,6 +449,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
         startPipeline,
         stopPipeline,
         setModel,
+        setInteractionMode,
         getLatestFeatures,
         getEarThreshold,
       }}

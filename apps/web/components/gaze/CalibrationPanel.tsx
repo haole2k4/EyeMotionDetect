@@ -8,10 +8,9 @@ import {
   getCalibrationLocally,
   getCalibrationSamplesLocally,
   resetCalibrationLocally,
-  saveCalibrationLocally,
   saveCalibrationSamplesLocally,
-  saveMLPLocally,
 } from "../../lib/gaze/storage";
+import { encodeArrayBufferToBase64 } from "../../lib/gaze/server-weights";
 import { api } from "../../lib/api";
 import type { CalibrationSample, GazeFeatures } from "../../lib/gaze/types";
 import { useGaze } from "./GazeProvider";
@@ -47,7 +46,6 @@ const CALIBRATION_POINTS: CalibrationPoint[] = [
 const SAMPLE_INTERVAL_MS = 16;
 const POINT_TIMEOUT_MS = 10000;
 const MAX_ROUNDS = 5;
-const EAR_THRESHOLD = 0.18;
 const MAX_SAMPLES_FOR_TRAINING = 900;
 
 function clamp01(value: number): number {
@@ -259,19 +257,18 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
       trainingSamples = normalizeSamplesToViewport(trainingSamples, currentWidth, currentHeight);
 
-  setMessage("Đang lưu mẫu và huấn luyện polynomial...");
+      setMessage("Đang lưu mẫu và huấn luyện polynomial...");
       await saveCalibrationSamplesLocally(trainingSamples, totalRounds);
 
       const polynomial = new PolynomialGazeMapper();
       polynomial.fit(trainingSamples);
       const polyWeights = polynomial.serialize();
-      await saveCalibrationLocally(
-        polyWeights.coeffsX,
-        polyWeights.coeffsY,
-        EAR_THRESHOLD,
-        trainingSamples.length,
-        totalRounds,
-      );
+      await api.put('/weights/poly', {
+        coeffsX: polyWeights.coeffsX,
+        coeffsY: polyWeights.coeffsY,
+        calibrationPoints: trainingSamples.length,
+        earThreshold: getEarThreshold(),
+      });
       await setModel("polynomial", polyWeights);
       onModelApplied("polynomial");
 
@@ -284,14 +281,13 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       });
       setTrainingMae(finalMae);
       const serialized = await mlp.serialize();
+      const encodedWeights = encodeArrayBufferToBase64(serialized.weights);
 
-      await saveMLPLocally(
-        serialized.json,
-        serialized.weights,
-        EAR_THRESHOLD,
-        trainingSamples.length,
-        totalRounds,
-      );
+      await api.put('/weights/mlp', {
+        mlpWeightsJson: serialized.json,
+        mlpWeightsBin: encodedWeights,
+        mlpWeightsEncoding: 'base64',
+      });
       await setModel("mlp", serialized);
       onModelApplied("mlp");
 
