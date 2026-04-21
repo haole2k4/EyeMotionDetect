@@ -31,3 +31,29 @@ Hệ thống đã nâng cấp từ cơ chế 4 điểm lên **9 điểm hiệu c
 
 Toàn bộ Weights của `PolynomialGazeMapper` (Bậc 2) và `GazeMLPModel` kèm số điểm mẫu huấn luyện đều sẽ được lưu trữ cục bộ (Local Storage).
 Người dùng có thể tiến hành gộp vòng calibration mới vào vòng cũ để cải thiện độ mượt hoặc chọn **Reset Calibration Data** để dọn dẹp hệ thống quay về từ đầu.
+
+## Sai số MAE (Mean Absolute Error)
+
+**Sai số MAE** đo lường độ phân tán và chênh lệch trung bình (tính bằng px) giữa kết quả dự đoán của Mạng Nơ-ron (MLP) so với điểm ngắm thực tế. MAE càng nhỏ thì độ chính xác của con trỏ khi theo dõi chuyển động mắt càng cao.
+
+Khi trạng thái MAE hiển thị là **"Chưa đo"** trên màn hình giao diện (và giá trị `lastMaePixels` là `null` trong cơ sở dữ liệu Postgres), điều này thường có nghĩa là:
+- Người dùng chưa hoàn thành bất kỳ một quá trình hiệu chuẩn (Calibration) nào.
+- Người dùng vừa thực hiện **Reset Calibration Data**.
+
+### Làm sao để cập nhật sai số MAE?
+1. Chuyển đển trình giao diện `/gaze` hoặc bấm nút **Bắt đầu Calibration**.
+2. Nhìn theo và giữ thẳng mắt vào 9 điểm hiệu chuẩn theo quy trình vòng huấn luyện.
+3. Khi quá trình thu thập hoàn tất, hệ thống tự động train mô hình (MLP Training). Hệ thống sẽ trả về giá trị **Final MAE** sau lượt Epoch cuối cùng.
+4. Mức sai số này được tự động gửi qua API (`PUT /weights/stats`) và lưu vào cơ sở dữ liệu `gaze_dev` trong trường `lastMaePixels` thuộc bảng `gaze_weights`. Qua đó, giao diện quay trở lại trang `/user/calibration` sẽ cập nhật giá trị px.
+
+### Tra cứu MAE trực tiếp qua CSDL bằng pgAdmin
+Với môi trường dev cung cấp sẵn qua Docker, bạn có thể kiểm tra trực tiếp trường `lastMaePixels` xem đã lưu chưa thông qua **pgAdmin**.
+
+- **Truy cập:** Đi tới `http://localhost:5050` (hoặc cổng cấu hình host).
+- **Tài khoản pgAdmin:** Email: `admin@eyemotiondetect.dev` | Mật khẩu: `admin123456`
+- **Kết nối Server:** Server "EyeMotionDetect Local" sẽ được nạp sẵn nhờ file `servers.json`. Click đúp vào server này. Username database là `gaze` và mật khẩu là `gaze_dev_pass`.
+- **Thao tác Query:** Mở Query Tool trỏ vào Database `gaze_dev`. Chạy câu lệnh SQL:
+  ```sql
+  SELECT id, "lastMaePixels", "calibrationPoints", "updatedAt" FROM gaze_weights;
+  ```
+  Nếu giá trị trả ra là `null`, bạn cần vào màn hình Calibration ứng dụng để đo lại.

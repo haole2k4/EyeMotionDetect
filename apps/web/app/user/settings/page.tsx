@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { resetCalibrationLocally } from '@/lib/gaze/storage';
+import { GAZE_WEIGHTS_UPDATED_EVENT, getLastGazeWeightsUpdateAt } from '@/lib/gaze/weights-sync';
 import { useGaze } from '@/components/gaze/GazeProvider';
 import { useRouter } from 'next/navigation';
 import {
@@ -32,24 +33,49 @@ export default function SettingsPage() {
   const [message, setMessage] = useState({ text: '', type: '' });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [gazeData, setGazeData] = useState<any>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number>(0);
   const router = useRouter();
 
   const { setModel } = useGaze();
 
-  const loadProfileAndGaze = async () => {
+  const loadProfileAndGaze = useCallback(async () => {
     try {
       const res = await api.get('/users/me');
       setProfile({ username: res.data.username || '', email: res.data.email || '' });
       const gazeRes = await api.get('/weights/me');
       setGazeData(gazeRes.data);
+      setLastSyncedAt(Date.now());
     } catch (error) {
       console.error('Failed to load profile', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadProfileAndGaze();
-  }, []);
+    void loadProfileAndGaze();
+  }, [loadProfileAndGaze]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void loadProfileAndGaze();
+    };
+
+    const refreshIfNewer = () => {
+      const updatedAt = getLastGazeWeightsUpdateAt();
+      if (updatedAt && updatedAt > lastSyncedAt) {
+        void loadProfileAndGaze();
+      }
+    };
+
+    window.addEventListener('focus', refreshIfNewer);
+    window.addEventListener('pageshow', refreshIfNewer);
+    window.addEventListener(GAZE_WEIGHTS_UPDATED_EVENT, refresh as EventListener);
+
+    return () => {
+      window.removeEventListener('focus', refreshIfNewer);
+      window.removeEventListener('pageshow', refreshIfNewer);
+      window.removeEventListener(GAZE_WEIGHTS_UPDATED_EVENT, refresh as EventListener);
+    };
+  }, [lastSyncedAt, loadProfileAndGaze]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,7 +198,7 @@ export default function SettingsPage() {
                 <div className="p-4 border border-neutral-800 bg-neutral-900/30 rounded-lg space-y-1">
                   <p className="text-sm text-neutral-400">Trạng thái mô hình</p>
                   <div className="text-lg font-semibold flex items-center gap-2">
-                    {gazeData.calibrationPoints >= 50 ? (
+                    {gazeData.calibrationPoints >= 45 ? (
                       <Badge variant="success">MLP Personalized Mode</Badge>
                     ) : gazeData.calibrationPoints > 0 ? (
                       <Badge variant="secondary">Polynomial Quick Mode</Badge>

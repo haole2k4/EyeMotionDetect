@@ -11,6 +11,7 @@ import {
   saveCalibrationSamplesLocally,
 } from "../../lib/gaze/storage";
 import { encodeArrayBufferToBase64 } from "../../lib/gaze/server-weights";
+import { markGazeWeightsUpdated } from "../../lib/gaze/weights-sync";
 import { api } from "../../lib/api";
 import type { CalibrationSample, GazeFeatures } from "../../lib/gaze/types";
 import { useGaze } from "./GazeProvider";
@@ -296,12 +297,23 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
         lastMaePixels: finalMae,
         earThreshold: getEarThreshold(),
       });
+      markGazeWeightsUpdated();
 
       await refreshStoredStats();
       setMessage(`Calibration thành công: ${trainingSamples.length} mẫu train, tổng ${totalRounds} vòng`);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Calibration thất bại";
-      setMessage(msg);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const err = error as any;
+      const msg = err?.response?.data?.message || err?.message || "Calibration thất bại";
+      console.error("[Calibration Error]", error);
+      if (
+        typeof msg === 'string' &&
+        msg.includes('gradient function not found for Mean')
+      ) {
+        setMessage('Lỗi TensorFlow backend khi train MLP. Vui lòng tải lại trang và thử lại.');
+      } else {
+        setMessage(`Lỗi: ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`);
+      }
     } finally {
       setCurrentPoint(null);
       setIsRunning(false);

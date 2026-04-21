@@ -15,6 +15,17 @@ interface CalibrationStatsPayload {
   earThreshold?: number;
 }
 
+type WeightsWithoutBin = Pick<
+  GazeWeights,
+  | 'id'
+  | 'polyCoeffsX'
+  | 'polyCoeffsY'
+  | 'earThreshold'
+  | 'calibrationPoints'
+  | 'lastMaePixels'
+  | 'updatedAt'
+>;
+
 @Injectable()
 export class WeightsService {
   constructor(
@@ -33,7 +44,7 @@ export class WeightsService {
     return weights;
   }
 
-  async getWeightsWithoutBin(userId: string) {
+  async getWeightsWithoutBin(userId: string): Promise<WeightsWithoutBin> {
     let weights = await this.weightsRepo.findOne({
       where: { user: { id: userId } },
       select: [
@@ -45,16 +56,31 @@ export class WeightsService {
         'lastMaePixels',
         'updatedAt',
       ],
-      relations: ['user'],
     });
+
     if (!weights) {
-      weights = this.weightsRepo.create({ user: { id: userId } as User });
-      await this.weightsRepo.save(weights);
-      // Remove bin fields manually before return
-      const weightsMod = weights as Partial<GazeWeights>;
-      delete weightsMod.mlpWeightsJson;
-      delete weightsMod.mlpWeightsBin;
+      const created = this.weightsRepo.create({ user: { id: userId } as User });
+      await this.weightsRepo.save(created);
+      const reloaded = await this.weightsRepo.findOne({
+        where: { user: { id: userId } },
+        select: [
+          'id',
+          'polyCoeffsX',
+          'polyCoeffsY',
+          'earThreshold',
+          'calibrationPoints',
+          'lastMaePixels',
+          'updatedAt',
+        ],
+      });
+
+      if (!reloaded) {
+        throw new BadRequestException('Unable to initialize weights for user');
+      }
+
+      weights = reloaded;
     }
+
     return weights;
   }
 
@@ -128,23 +154,31 @@ export class WeightsService {
   async updateCalibrationStats(userId: string, data: CalibrationStatsPayload) {
     const weights = await this.getWeights(userId);
 
-    if (
-      typeof data.calibrationPoints === 'number' &&
-      Number.isFinite(data.calibrationPoints)
-    ) {
+    if (data.calibrationPoints !== undefined) {
+      if (
+        typeof data.calibrationPoints !== 'number' ||
+        !Number.isFinite(data.calibrationPoints)
+      ) {
+        throw new BadRequestException('calibrationPoints must be a finite number');
+      }
+
       weights.calibrationPoints = Math.max(
         0,
         Math.round(data.calibrationPoints),
       );
     }
 
-    if (data.lastMaePixels === null) {
-      weights.lastMaePixels = null;
-    } else if (
-      typeof data.lastMaePixels === 'number' &&
-      Number.isFinite(data.lastMaePixels)
-    ) {
-      weights.lastMaePixels = data.lastMaePixels;
+    if (data.lastMaePixels !== undefined) {
+      if (data.lastMaePixels === null) {
+        weights.lastMaePixels = null;
+      } else if (
+        typeof data.lastMaePixels === 'number' &&
+        Number.isFinite(data.lastMaePixels)
+      ) {
+        weights.lastMaePixels = data.lastMaePixels;
+      } else {
+        throw new BadRequestException('lastMaePixels must be a finite number or null');
+      }
     }
 
     if (

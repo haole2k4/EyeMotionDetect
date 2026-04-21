@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { GAZE_WEIGHTS_UPDATED_EVENT } from '@/lib/gaze/weights-sync';
 import {
   Card,
   CardContent,
@@ -14,22 +16,36 @@ import { Button } from '@/components/ui/button';
 
 export default function CalibrationPage() {
   const router = useRouter();
-  const [weights, setWeights] = useState<{
-    calibrationPoints?: number;
-    lastMaePixels?: number | null;
-  } | null>(null);
+  
+  const { data: weights, refetch } = useQuery({
+    queryKey: ['calibration-weights-me'],
+    queryFn: async () => {
+      const res = await api.get('/weights/me');
+      return res.data as {
+        calibrationPoints?: number;
+        lastMaePixels?: number | null;
+      };
+    },
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchOnMount: 'always',
+  });
 
   useEffect(() => {
-    async function loadWeights() {
-      try {
-        const res = await api.get('/weights/me');
-        setWeights(res.data);
-      } catch (error) {
-        console.error('Failed to load calibration data', error);
-      }
-    }
-    loadWeights();
-  }, []);
+    const refresh = () => {
+      void refetch();
+    };
+
+    window.addEventListener('focus', refresh);
+    window.addEventListener('pageshow', refresh);
+    window.addEventListener(GAZE_WEIGHTS_UPDATED_EVENT, refresh as EventListener);
+
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('pageshow', refresh);
+      window.removeEventListener(GAZE_WEIGHTS_UPDATED_EVENT, refresh as EventListener);
+    };
+  }, [refetch]);
 
   const calibrationPoints = weights?.calibrationPoints || 0;
   const lastMaePixels = weights?.lastMaePixels;

@@ -4,10 +4,18 @@ import type { CalibrationSample } from './types';
 export class GazeMLPModel {
   private model: tf.LayersModel | null = null;
   private static backendInitPromise: Promise<void> | null = null;
+  private static gradientsRegistered = false;
 
   static async ensureBackendReady(): Promise<void> {
     if (!GazeMLPModel.backendInitPromise) {
       GazeMLPModel.backendInitPromise = (async () => {
+        // Force registration of gradient functions. Some bundlers may tree-shake
+        // this side effect and cause runtime errors like "gradient function not found for Mean".
+        if (!GazeMLPModel.gradientsRegistered) {
+          await import('@tensorflow/tfjs-core/dist/register_all_gradients');
+          GazeMLPModel.gradientsRegistered = true;
+        }
+
         try {
           await import('@tensorflow/tfjs-backend-webgpu');
           await tf.setBackend('webgpu');
@@ -40,7 +48,6 @@ export class GazeMLPModel {
           inputShape: [7], // iris * 4 + head pose * 3
           units: 32,
           activation: 'relu',
-          kernelRegularizer: tf.regularizers.l2({ l2: 0.001 }),
           name: 'hidden1'
         }),
         tf.layers.dropout({ rate: 0.1 }),
@@ -97,8 +104,8 @@ export class GazeMLPModel {
       callbacks: {
         onEpochEnd: async (epoch, logs) => {
           epochCount = epoch + 1;
-          finalMae = (logs?.val_mae ?? logs?.mae ?? 0)
-            * Math.max(screenWidth, screenHeight); // tính theo pixels
+          const rawMae = logs?.val_meanAbsoluteError ?? logs?.meanAbsoluteError ?? logs?.val_mae ?? logs?.mae ?? Infinity;
+          finalMae = rawMae * Math.max(screenWidth, screenHeight); // tính theo pixels
 
           if (onProgress) {
             onProgress(epoch, finalMae);

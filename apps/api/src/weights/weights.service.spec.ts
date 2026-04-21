@@ -89,4 +89,69 @@ describe('WeightsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
+
+  describe('updateCalibrationStats', () => {
+    it('persists calibrationPoints and lastMaePixels', async () => {
+      await service.updateCalibrationStats('user-1', {
+        calibrationPoints: 120,
+        lastMaePixels: 13.75,
+      });
+
+      expect(persisted.calibrationPoints).toBe(120);
+      expect(persisted.lastMaePixels).toBe(13.75);
+    });
+
+    it('accepts null for lastMaePixels', async () => {
+      persisted.lastMaePixels = 9.9;
+
+      await service.updateCalibrationStats('user-1', {
+        lastMaePixels: null,
+      });
+
+      expect(persisted.lastMaePixels).toBeNull();
+    });
+
+    it('throws for invalid lastMaePixels values', async () => {
+      await expect(
+        service.updateCalibrationStats('user-1', {
+          lastMaePixels: Number.NaN,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('getWeightsWithoutBin', () => {
+    it('creates defaults and returns selected stats fields', async () => {
+      const created = {
+        ...persisted,
+        id: 'weights-2',
+        calibrationPoints: 0,
+        lastMaePixels: null,
+      };
+
+      repo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(created as GazeWeights);
+      repo.create.mockReturnValue(created as GazeWeights);
+
+      const result = await service.getWeightsWithoutBin('user-1');
+
+      expect(repo.create).toHaveBeenCalled();
+      expect(repo.save).toHaveBeenCalled();
+      expect(result.calibrationPoints).toBe(0);
+      expect(result.lastMaePixels).toBeNull();
+      expect(repo.findOne).toHaveBeenLastCalledWith({
+        where: { user: { id: 'user-1' } },
+        select: [
+          'id',
+          'polyCoeffsX',
+          'polyCoeffsY',
+          'earThreshold',
+          'calibrationPoints',
+          'lastMaePixels',
+          'updatedAt',
+        ],
+      });
+    });
+  });
 });

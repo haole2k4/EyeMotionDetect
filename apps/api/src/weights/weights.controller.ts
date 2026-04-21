@@ -18,7 +18,6 @@ import type {
 interface CalibrationStatsBody {
   calibrationPoints?: number;
   lastMaePixels?: number | null;
-  earThreshold?: number;
 }
 
 @Controller('weights')
