@@ -61,7 +61,7 @@ export class PolynomialGazeMapper {
   private dot(a: number[], b: number[]): number {
     return a.reduce((sum, val, i) => sum + val * b[i], 0);
   }
-
+  // mae: mean absolute error
   private mae(pred: number[], actual: number[]): number {
     return pred.reduce((sum, p, i) => sum + Math.abs(p - actual[i]), 0) / pred.length;
   }

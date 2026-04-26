@@ -1,5 +1,5 @@
 // apps/web/lib/gaze/smoother.ts
-
+// one euro
 class LowPassFilter {
   private y: number | null = null;
   private s: number | null = null;

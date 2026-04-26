@@ -6,9 +6,9 @@ Dự án đã được chuyển đổi sang kiến trúc **Monorepo (Turborepo)*
 
 ## Tính năng nổi bật
 
-- **Chế độ trắc nghiệm (MCQ Mode):** Giao diện tập trung vào 4 lựa chọn (A, B, C, D) chia thành các phân vùng trên màn hình.
-- **Hiệu chuẩn (Calibration) 4 điểm:** Tối giản thời gian huấn luyện với 4 vị trí các góc, đánh giá độ chính xác qua phân vùng khu vực (region classification) thay vì cố định tọa độ pixel chính xác.
-- **Chọn đáp án bằng Dwell-time:** Khắc phục lỗi nháy mắt vô tình (blink-to-click) bằng cách đếm thời gian nhìn liên tục (1.5s - 2.0s) vào một đáp án thông qua Dwell-time State Machine tiến tiến.
+- **Chế độ dạng lưới (Grid Mode):** Giao diện được chia thành dạng lưới 3x3 (9 phân vùng) trên màn hình, hỗ trợ điều hướng và tương tác đa điểm.
+- **Hiệu chuẩn (Calibration) 9 điểm:** Quy trình huấn luyện với 9 vị trí trên màn hình, sử dụng Grid Mapper để chuyển đổi tọa độ điểm nhìn thành các ô lưới tương ứng với độ chính xác cao.
+- **Chọn đáp án bằng Dwell-time:** Khắc phục lỗi nháy mắt vô tình (blink-to-click) bằng cách đếm thời gian nhìn liên tục (1.5s - 2.0s) vào một ô thông qua Dwell-time State Machine tiến tiến. Có tính năng Deadzone ở trung tâm để tránh chọn nhầm.
 
 ## Kiến trúc Hệ thống (Hybrid Edge-AI 2026)
 
@@ -22,7 +22,7 @@ Dự án đã được chuyển đổi sang kiến trúc **Monorepo (Turborepo)*
 EyeMotionDetect/
 ├── apps/
 │   ├── api/            # Backend NestJS (REST API, TypeORM, Auth, DB)
-│   └── web/            # Frontend Next.js (MediaPipe, TF.js, UI, Calibration MCQ)
+│   └── web/            # Frontend Next.js (MediaPipe, TF.js, UI, Calibration Grid 3x3)
 ├── packages/
 │   └── shared-types/   # Shared types dùng chung cho cả frontend/backend
 ├── docs/               # Tài liệu kỹ thuật chi tiết
@@ -88,5 +88,5 @@ Hệ thống bật tại 2 dịch vụ nội bộ:
 Thiết kế mô hình gốc cũ điều hướng chuột tự do đã được thay thế. Vui lòng đọc các tài liệu cập nhật tại mục [docs](./docs/README.md) để nắm cơ chế mới:
 
 1. **[Backend Dev & Setup](./docs/BACKEND_DEV.md)**: Chi tiết cách tương tác Terminal API, role admin, test users và auto-migration database TypeORM.
-2. **[Calibration Guide (Cấu hình 4 điểm)](./docs/CALIBRATION_GUIDE.md)**: Quy trình hiệu chuẩn tinh gọn, phân tích độ sai lệch trên 4 khu vực màn hình chéo nhau.
-3. **[Eye Actions Mapping (Chống sai lệch do nháy mắt)](./docs/EYE_ACTIONS_MAPPING.md)**: Cách hoạt động state machine của Dwell-time thay thế hoàn toàn kỹ thuật thao tác nháy mắt (blink gesture) để hạn chế rung giật ngẫu nhiên trong vùng chỉ định.
+2. **[Calibration Guide (Cấu hình 9 điểm)](./docs/CALIBRATION_GUIDE.md)**: Quy trình hiệu chuẩn chi tiết, phân tích độ sai lệch trên 9 khu vực của lưới 3x3.
+3. **[Eye Actions Mapping (Chống sai lệch do nháy mắt)](./docs/EYE_ACTIONS_MAPPING.md)**: Cách hoạt động state machine của Dwell-time thay thế hoàn toàn kỹ thuật thao tác nháy mắt (blink gesture) để hạn chế rung giật ngẫu nhiên, có hỗ trợ vùng chết (deadzone) trung tâm.
