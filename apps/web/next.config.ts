@@ -1,10 +1,26 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactStrictMode: false,
   experimental: {
-    optimizePackageImports: ['@mediapipe/tasks-vision', '@tensorflow/tfjs', 'lucide-react', '@base-ui/react'],
+    optimizePackageImports: ['@mediapipe/tasks-vision', 'lucide-react', '@base-ui/react'],
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin',
+          },
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'credentialless',
+          },
+        ],
+      },
+    ];
   },
 };
 

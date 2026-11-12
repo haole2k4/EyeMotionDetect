@@ -6,13 +6,10 @@ import { ArrowLeft } from "lucide-react";
 import { CalibrationPanel } from "@/components/gaze/CalibrationPanel";
 import { useGaze } from "@/components/gaze/GazeProvider";
 import { api } from "@/lib/api";
-import { decodeBinaryPayloadToArrayBuffer } from "@/lib/gaze/server-weights";
 
 interface ServerWeightsResponse {
   polyCoeffsX: number[] | null;
   polyCoeffsY: number[] | null;
-  mlpWeightsJson: string | null;
-  mlpWeightsBin: unknown;
   earThreshold?: number;
   calibrationPoints?: number;
 }
@@ -35,19 +32,13 @@ export default function GazePage() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const [status, setStatus] = useState("Chưa bắt đầu");
-  const [activeMode, setActiveMode] = useState<"fallback" | "polynomial" | "mlp">("fallback");
+  const [activeMode, setActiveMode] = useState<"fallback" | "polynomial">("fallback");
   const [cameraReady, setCameraReady] = useState(false);
 
   useEffect(() => {
     const loadSavedModel = async () => {
       try {
         const { data } = await api.get<ServerWeightsResponse>("/weights");
-        const mlpWeights = decodeBinaryPayloadToArrayBuffer(data.mlpWeightsBin);
-        if (typeof data.mlpWeightsJson === "string" && mlpWeights) {
-          await setModel("mlp", { json: data.mlpWeightsJson, weights: mlpWeights });
-          setActiveMode("mlp");
-          return;
-        }
 
         if (isFiniteNumberArray(data.polyCoeffsX) && isFiniteNumberArray(data.polyCoeffsY)) {
           const poly = { coeffsX: data.polyCoeffsX, coeffsY: data.polyCoeffsY };
@@ -141,13 +132,13 @@ export default function GazePage() {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => void startCamera()}
-            className="rounded-md bg-emerald-500 px-4 py-2 font-medium text-black hover:bg-emerald-400"
+            className="rounded-md bg-emerald-500 px-4 py-2 font-medium text-black hover:bg-emerald-400 transition"
           >
             Start Eye Control
           </button>
           <button
             onClick={stopCamera}
-            className="rounded-md border border-neutral-700 bg-neutral-800 px-4 py-2 hover:bg-neutral-700"
+            className="rounded-md border border-neutral-700 bg-neutral-800 px-4 py-2 hover:bg-neutral-700 transition"
           >
             Stop
           </button>

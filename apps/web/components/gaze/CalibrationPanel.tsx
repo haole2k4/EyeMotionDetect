@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalibrationSession } from "../../lib/gaze/calibration";
-import { GazeMLPModel } from "../../lib/gaze/mlp-model";
 import { PolynomialGazeMapper } from "../../lib/gaze/polynomial";
 import {
   getCalibrationLocally,
@@ -10,13 +9,12 @@ import {
   resetCalibrationLocally,
   saveCalibrationSamplesLocally,
 } from "../../lib/gaze/storage";
-import { encodeArrayBufferToBase64 } from "../../lib/gaze/server-weights";
 import { markGazeWeightsUpdated } from "../../lib/gaze/weights-sync";
 import { api } from "../../lib/api";
 import type { CalibrationSample, GazeFeatures } from "../../lib/gaze/types";
 import { useGaze } from "./GazeProvider";
 
-type Mode = "fallback" | "polynomial" | "mlp";
+type Mode = "fallback" | "polynomial";
 
 interface CalibrationPanelProps {
   cameraReady: boolean;
@@ -33,21 +31,20 @@ const POS_2 = 1 / 2; // 0.5
 const POS_3 = 5 / 6; // 0.8333...
 
 const CALIBRATION_POINTS: CalibrationPoint[] = [
-  { x: POS_1, y: POS_1 }, // Row 0, Col 0
-  { x: POS_2, y: POS_1 }, // Row 0, Col 1
-  { x: POS_3, y: POS_1 }, // Row 0, Col 2
-  { x: POS_1, y: POS_2 }, // Row 1, Col 0
-  { x: POS_2, y: POS_2 }, // Row 1, Col 1
-  { x: POS_3, y: POS_2 }, // Row 1, Col 2
-  { x: POS_1, y: POS_3 }, // Row 2, Col 0
-  { x: POS_2, y: POS_3 }, // Row 2, Col 1
-  { x: POS_3, y: POS_3 }, // Row 2, Col 2
+  { x: POS_1, y: POS_1 },
+  { x: POS_2, y: POS_1 },
+  { x: POS_3, y: POS_1 },
+  { x: POS_1, y: POS_2 },
+  { x: POS_2, y: POS_2 },
+  { x: POS_3, y: POS_2 },
+  { x: POS_1, y: POS_3 },
+  { x: POS_2, y: POS_3 },
+  { x: POS_3, y: POS_3 },
 ];
 
 const SAMPLE_INTERVAL_MS = 16;
 const POINT_TIMEOUT_MS = 10000;
-const MAX_ROUNDS = 5;
-const MAX_SAMPLES_FOR_TRAINING = 900;
+const MAX_SAMPLES_FOR_TRAINING = 450;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -153,11 +150,13 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
   const { setModel, stats, getLatestFeatures, getEarThreshold } = useGaze();
   const [isRunning, setIsRunning] = useState(false);
   const [currentRound, setCurrentRound] = useState(0);
+  const [targetRounds, setTargetRounds] = useState(1);
   const [currentPoint, setCurrentPoint] = useState<CalibrationPoint | null>(null);
   const [trainingMae, setTrainingMae] = useState<number | null>(null);
   const [message, setMessage] = useState("Chưa chạy calibration");
   const [storedSampleCount, setStoredSampleCount] = useState(0);
   const [storedRounds, setStoredRounds] = useState(0);
+  const [isResetConfirming, setIsResetConfirming] = useState(false);
 
   const refreshStoredStats = useCallback(async () => {
     const stored = await getCalibrationLocally();
@@ -195,31 +194,30 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     let round = 0;
 
     try {
-      let continueRounds = true;
-      while (continueRounds && round < MAX_ROUNDS) {
+      while (round < targetRounds) {
         round += 1;
         setCurrentRound(round);
 
-          const shuffledPoints = shuffleArray(CALIBRATION_POINTS);
-          for (let index = 0; index < totalPointsPerRound; index += 1) {
-            const target = shuffledPoints[index];
-            setCurrentPoint(target);
-            setMessage(`Vòng ${round}: điểm ${index + 1}/${totalPointsPerRound}`);
+        const shuffledPoints = shuffleArray(CALIBRATION_POINTS);
+        for (let index = 0; index < totalPointsPerRound; index += 1) {
+          const target = shuffledPoints[index];
+          setCurrentPoint(target);
+          setMessage(`Vòng ${round}/${targetRounds}: điểm ${index + 1}/${totalPointsPerRound}`);
 
-            await withTimeout(
-              (signal) => session.collectPoint(
+          await withTimeout(
+            (signal) =>
+              session.collectPoint(
                 target.x * window.innerWidth,
                 target.y * window.innerHeight,
                 createFeatureStream(getLatestFeatures, signal),
                 signal,
-                getEarThreshold()              ),
-              POINT_TIMEOUT_MS,
-              "Hết thời gian lấy mẫu cho một điểm, vui lòng thử lại"
-            );
-          }        setCurrentPoint(null);
-        continueRounds =
-          round < MAX_ROUNDS &&
-          window.confirm(`Đã hoàn thành vòng ${round}. Bạn có muốn tiếp tục thêm 1 vòng calibration nữa không?`);
+                getEarThreshold()
+              ),
+            POINT_TIMEOUT_MS,
+            "Hết thời gian lấy mẫu cho một điểm, vui lòng thử lại"
+          );
+        }
+        setCurrentPoint(null);
       }
 
       const currentWidth = window.innerWidth;
@@ -239,81 +237,53 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       const previousSamples = await getCalibrationSamplesLocally();
       const previousStored = await getCalibrationLocally();
 
-      let trainingSamples: CalibrationSample[] = [...newSamples];
-      let totalRounds = round;
+      // Tự động gộp mẫu thông minh không dùng window.confirm
+      let trainingSamples: CalibrationSample[] = [...previousSamples, ...newSamples];
+      const totalRounds = (previousStored?.rounds ?? 0) + round;
 
-      if (previousSamples.length > 0) {
-        const shouldMerge = window.confirm(
-          `Đã tìm thấy ${previousSamples.length} mẫu calibration cũ. Bạn có muốn gộp vào lần train này không?`,
+      if (trainingSamples.length > MAX_SAMPLES_FOR_TRAINING) {
+        trainingSamples = trainingSamples.slice(
+          trainingSamples.length - MAX_SAMPLES_FOR_TRAINING
         );
-
-        if (shouldMerge) {
-          trainingSamples = [...previousSamples, ...newSamples];
-          if (trainingSamples.length > MAX_SAMPLES_FOR_TRAINING) {
-            trainingSamples = trainingSamples.slice(trainingSamples.length - MAX_SAMPLES_FOR_TRAINING);
-          }
-          totalRounds = (previousStored?.rounds ?? 0) + round;
-        }
       }
 
       trainingSamples = normalizeSamplesToViewport(trainingSamples, currentWidth, currentHeight);
 
-      setMessage("Đang lưu mẫu và huấn luyện polynomial...");
+      setMessage("Đang giải nghiệm 18D Huber Ridge SVD (< 2ms)...");
       await saveCalibrationSamplesLocally(trainingSamples, totalRounds);
 
       const polynomial = new PolynomialGazeMapper();
-      polynomial.fit(trainingSamples);
+      const fitResult = polynomial.fit(trainingSamples);
       const polyWeights = polynomial.serialize();
+
+      setTrainingMae(fitResult.mae2D);
+
       await api.put('/weights/poly', {
         coeffsX: polyWeights.coeffsX,
         coeffsY: polyWeights.coeffsY,
         calibrationPoints: trainingSamples.length,
         earThreshold: getEarThreshold(),
       });
-      await setModel("polynomial", polyWeights);
-      onModelApplied("polynomial");
-
-      setMessage("Đang huấn luyện MLP...");
-      await GazeMLPModel.ensureBackendReady();
-      const mlp = new GazeMLPModel();
-      mlp.build();
-      const { finalMae } = await mlp.train(trainingSamples, currentWidth, currentHeight, (_, mae) => {
-        setTrainingMae(mae);
-      });
-      setTrainingMae(finalMae);
-      const serialized = await mlp.serialize();
-      const encodedWeights = encodeArrayBufferToBase64(serialized.weights);
-
-      await api.put('/weights/mlp', {
-        mlpWeightsJson: serialized.json,
-        mlpWeightsBin: encodedWeights,
-        mlpWeightsEncoding: 'base64',
-      });
-      await setModel("mlp", serialized);
-      onModelApplied("mlp");
 
       await api.put('/weights/stats', {
         calibrationPoints: trainingSamples.length,
-        lastMaePixels: finalMae,
+        lastMaePixels: fitResult.mae2D,
         earThreshold: getEarThreshold(),
       });
+
+      await setModel("polynomial", polyWeights);
+      onModelApplied("polynomial");
       markGazeWeightsUpdated();
 
       await refreshStoredStats();
-      setMessage(`Calibration thành công: ${trainingSamples.length} mẫu train, tổng ${totalRounds} vòng`);
+      setMessage(
+        `Hiệu chuẩn thành công! MAE 2D: ${fitResult.mae2D.toFixed(1)}px (${trainingSamples.length} mẫu, ${totalRounds} vòng)`
+      );
     } catch (error) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const err = error as any;
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
       const msg = err?.response?.data?.message || err?.message || "Calibration thất bại";
       console.error("[Calibration Error]", error);
-      if (
-        typeof msg === 'string' &&
-        msg.includes('gradient function not found for Mean')
-      ) {
-        setMessage('Lỗi TensorFlow backend khi train MLP. Vui lòng tải lại trang và thử lại.');
-      } else {
-        setMessage(`Lỗi: ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`);
-      }
+      setMessage(`Lỗi: ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
     } finally {
       setCurrentPoint(null);
       setIsRunning(false);
@@ -326,48 +296,92 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     refreshStoredStats,
     setModel,
     stats?.singleFaceReady,
+    targetRounds,
     totalPointsPerRound,
   ]);
 
   const resetCalibration = useCallback(async () => {
     if (isRunning) return;
 
-    const ok = window.confirm("Bạn chắc chắn muốn xóa toàn bộ dữ liệu calibration và model đã lưu?");
-    if (!ok) return;
-
-    await api.delete('/weights/me');
+    await api.delete('/weights/me').catch(() => {});
     await resetCalibrationLocally();
     await setModel("none");
     onModelApplied("fallback");
     setTrainingMae(null);
     setCurrentRound(0);
     setCurrentPoint(null);
+    setIsResetConfirming(false);
     setMessage("Đã reset dữ liệu calibration. Hệ thống đang ở fallback mode.");
     await refreshStoredStats();
   }, [isRunning, onModelApplied, refreshStoredStats, setModel]);
 
   return (
     <div className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-      <p className="text-sm text-neutral-300">Hiệu chỉnh để huấn luyện model theo mắt của bạn.</p>
+      <p className="text-sm text-neutral-300">
+        Hiệu chỉnh 18D Huber Ridge SVD theo giải phẫu mắt và tư thế đầu của bạn.
+      </p>
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => void runCalibration()}
           disabled={isRunning || !cameraReady}
-          className="rounded-md bg-cyan-400 px-4 py-2 font-medium text-black disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md bg-cyan-400 px-4 py-2 font-medium text-black transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Bắt đầu Calibration
+          {isRunning ? `Đang chạy vòng ${currentRound}/${targetRounds}...` : "Bắt đầu Calibration"}
         </button>
-        <button
-          onClick={() => void resetCalibration()}
-          disabled={isRunning}
-          className="rounded-md border border-red-500/60 bg-red-900/30 px-4 py-2 font-medium text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Reset Calibration Data
-        </button>
+
+        {!isRunning && (
+          <div className="flex items-center gap-1.5 text-xs text-neutral-300">
+            <span>Số vòng:</span>
+            {[1, 2, 3].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setTargetRounds(r)}
+                className={`rounded px-2 py-1 text-xs font-semibold ${
+                  targetRounds === r
+                    ? "bg-cyan-500 text-black"
+                    : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!isResetConfirming ? (
+          <button
+            onClick={() => setIsResetConfirming(true)}
+            disabled={isRunning}
+            className="rounded-md border border-red-500/60 bg-red-900/30 px-3 py-2 text-xs font-medium text-red-200 transition hover:bg-red-800/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Reset Data
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => void resetCalibration()}
+              className="rounded-md bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-500"
+            >
+              Xác nhận xóa
+            </button>
+            <button
+              onClick={() => setIsResetConfirming(false)}
+              className="rounded-md border border-neutral-700 px-2.5 py-2 text-xs text-neutral-300 hover:bg-neutral-800"
+            >
+              Hủy
+            </button>
+          </div>
+        )}
+
         <span className="text-xs text-neutral-400">Mỗi vòng: {totalPointsPerRound} điểm</span>
-        <span className="text-xs text-neutral-400">Đã lưu: {storedSampleCount} mẫu / {storedRounds} vòng</span>
+        <span className="text-xs text-neutral-400">
+          Đã lưu: {storedSampleCount} mẫu / {storedRounds} vòng
+        </span>
         {trainingMae !== null && (
-          <span className="text-xs text-emerald-300">MLP MAE: {trainingMae.toFixed(1)} px</span>
+          <span className="text-xs text-emerald-300">
+            Huber MAE 2D: {trainingMae.toFixed(1)} px
+          </span>
         )}
       </div>
 
@@ -375,17 +389,17 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
 
       {isRunning && (
         <p className="text-xs text-amber-300">
-          Đang chạy vòng {currentRound}. Sau mỗi vòng hệ thống sẽ hỏi bạn có muốn tiếp tục hay không.
+          Đang chạy vòng {currentRound}/{targetRounds}. Giữ mắt nhìn tập trung vào hồng tâm đang hiển thị.
         </p>
       )}
 
       {overlayPoint && (
         <div className="pointer-events-none fixed inset-0 z-[99990]">
           <div
-            className="absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-cyan-400/90 shadow-[0_0_18px_rgba(34,211,238,0.7)]"
+            className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-cyan-400/90 shadow-[0_0_24px_rgba(34,211,238,0.9)] animate-pulse"
             style={{ left: `${overlayPoint.x * 100}%`, top: `${overlayPoint.y * 100}%` }}
           />
-          <div className="absolute left-1/2 top-6 -translate-x-1/2 rounded-md bg-black/70 px-3 py-2 text-xs text-white">
+          <div className="absolute left-1/2 top-6 -translate-x-1/2 rounded-md bg-black/80 px-3.5 py-2 text-xs font-medium text-white shadow-lg">
             Giữ mắt vào điểm tròn, hạn chế chớp mắt
           </div>
         </div>

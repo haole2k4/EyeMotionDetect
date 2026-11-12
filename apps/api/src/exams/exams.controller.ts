@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -11,10 +12,12 @@ import {
 } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { Exam } from './entities/exam.entity';
+import { GazeHeatmapPoint } from './entities/exam-session.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard, Roles } from '../auth/roles.guard';
 import type { RequestWithUser } from '../auth/interfaces/request-with-user.interface';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('exams')
 export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
@@ -66,9 +69,33 @@ export class ExamsController {
   @Post('sessions/:sessionId/finish')
   finishExam(
     @Param('sessionId') sessionId: string,
+    @Body()
+    body: {
+      gazeHeatmap?: GazeHeatmapPoint[];
+      faceLossPauseCount?: number;
+    },
     @Request() req: RequestWithUser,
   ) {
-    return this.examsService.finishExam(sessionId, req.user.id);
+    return this.examsService.finishExam(sessionId, req.user.id, body);
+  }
+
+  @Put('sessions/:sessionId/telemetry')
+  updateTelemetry(
+    @Param('sessionId') sessionId: string,
+    @Body()
+    body: {
+      gazeHeatmap?: GazeHeatmapPoint[];
+      faceLossPauseCount?: number;
+    },
+    @Request() req: RequestWithUser,
+  ) {
+    return this.examsService.updateTelemetry(sessionId, req.user.id, body);
+  }
+
+  @Get('sessions/:sessionId/heatmap')
+  @Roles('admin')
+  getSessionHeatmap(@Param('sessionId') sessionId: string) {
+    return this.examsService.getSessionHeatmap(sessionId);
   }
 
   @Get(':id')

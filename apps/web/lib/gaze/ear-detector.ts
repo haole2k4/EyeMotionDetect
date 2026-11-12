@@ -1,10 +1,9 @@
-// Hiện thực mới đo lường thời gian ms thay vì frames để hỗ trợ chuột
+// apps/web/lib/gaze/ear-detector.ts
 
 export type BlinkAction = 'none' | 'left_click' | 'right_click' | 'drag_toggle';
 
 export class AdaptiveEARDetector {
   private baselineEAR = 0.28;
-  private readonly RATIO = 0.6;
   private history: number[] = [];
   private readonly WINDOW = 90;
 
@@ -21,11 +20,25 @@ export class AdaptiveEARDetector {
   private readonly COOLDOWN_MS = 700;
   private readonly BOTH_EYE_SYNC_WINDOW = 180;
 
-  getThreshold(): number {
-    return this.baselineEAR * this.RATIO;
+  getThreshold(yNorm = 0.5): number {
+    const clampedY = Math.max(0, Math.min(1, yNorm));
+    return this.baselineEAR * (0.6 - 0.12 * clampedY);
   }
 
-  update(earLeft: number, earRight: number, timestamp: number): BlinkAction {
+  setBaselineEAR(baseline: number): void {
+    if (baseline > 0.15 && baseline < 0.45) {
+      this.baselineEAR = baseline;
+    }
+  }
+
+  update(
+    earLeft: number,
+    earRight: number,
+    timestamp: number,
+    yNorm = 0.5,
+    dominantEye: 'both' | 'left' | 'right' = 'both',
+    customBlinkMs = 350
+  ): BlinkAction {
     const ear = (earLeft + earRight) / 2;
 
     if (ear > this.baselineEAR * 0.9) {
@@ -34,7 +47,7 @@ export class AdaptiveEARDetector {
       this.baselineEAR = Math.max(...this.history.slice(-30));
     }
 
-    const threshold = this.baselineEAR * this.RATIO;
+    const threshold = this.getThreshold(yNorm);
     const isLeftClosed = earLeft < threshold;
     const isRightClosed = earRight < threshold;
 
@@ -52,42 +65,64 @@ export class AdaptiveEARDetector {
       this.rightClosedSince = timestamp;
     }
 
-    // Ưu tiên drag nếu cả 2 mắt nhắm đồng bộ
-    if (
-      isLeftClosed &&
-      isRightClosed &&
-      this.leftClosedSince !== null &&
-      this.rightClosedSince !== null &&
-      !this.hasTriggeredDrag
-    ) {
-      const timeDiff = Math.abs(this.leftClosedSince - this.rightClosedSince);
-      const bothDuration = timestamp - Math.max(this.leftClosedSince, this.rightClosedSince);
+    const clickMax = Math.max(this.CLICK_MAX, customBlinkMs + 100);
 
-      if (timeDiff <= this.BOTH_EYE_SYNC_WINDOW && bothDuration >= this.DRAG_MIN) {
-        action = 'drag_toggle';
-        this.hasTriggeredDrag = true;
+    // Xử lý dominant eye đơn
+    if (dominantEye === 'left') {
+      if (!isLeftClosed && this.leftClosedSince !== null) {
+        const dur = timestamp - this.leftClosedSince;
+        if (dur >= this.CLICK_MIN && dur <= clickMax) {
+          action = 'left_click';
+        }
+        this.leftClosedSince = null;
       }
-    }
-
-    // Chỉ xét click trái khi mắt phải đang mở
-    if (!isLeftClosed && this.leftClosedSince !== null) {
-      const durationLeft = timestamp - this.leftClosedSince;
-      const wasRightOpen = this.rightClosedSince === null;
-      if (wasRightOpen && durationLeft >= this.CLICK_MIN && durationLeft <= this.CLICK_MAX) {
-        action = 'left_click';
+    } else if (dominantEye === 'right') {
+      if (!isRightClosed && this.rightClosedSince !== null) {
+        const dur = timestamp - this.rightClosedSince;
+        if (dur >= this.CLICK_MIN && dur <= clickMax) {
+          action = 'left_click';
+        }
+        this.rightClosedSince = null;
       }
-      this.leftClosedSince = null;
-    }
+    } else {
+      // Both eyes mode
+      // Ưu tiên drag nếu cả 2 mắt nhắm đồng bộ
+      if (
+        isLeftClosed &&
+        isRightClosed &&
+        this.leftClosedSince !== null &&
+        this.rightClosedSince !== null &&
+        !this.hasTriggeredDrag
+      ) {
+        const timeDiff = Math.abs(this.leftClosedSince - this.rightClosedSince);
+        const bothDuration = timestamp - Math.max(this.leftClosedSince, this.rightClosedSince);
 
-    // Chỉ xét click phải khi mắt trái đang mở
-    if (!isRightClosed && this.rightClosedSince !== null) {
-      const durationRight = timestamp - this.rightClosedSince;
-      const wasLeftOpen = this.leftClosedSince === null;
-
-      if (wasLeftOpen && durationRight >= this.CLICK_MIN && durationRight <= this.CLICK_MAX) {
-        action = 'right_click';
+        if (timeDiff <= this.BOTH_EYE_SYNC_WINDOW && bothDuration >= this.DRAG_MIN) {
+          action = 'drag_toggle';
+          this.hasTriggeredDrag = true;
+        }
       }
-      this.rightClosedSince = null;
+
+      // Chỉ xét click trái khi mắt phải đang mở
+      if (!isLeftClosed && this.leftClosedSince !== null) {
+        const durationLeft = timestamp - this.leftClosedSince;
+        const wasRightOpen = this.rightClosedSince === null;
+        if (wasRightOpen && durationLeft >= this.CLICK_MIN && durationLeft <= clickMax) {
+          action = 'left_click';
+        }
+        this.leftClosedSince = null;
+      }
+
+      // Chỉ xét click phải khi mắt trái đang mở
+      if (!isRightClosed && this.rightClosedSince !== null) {
+        const durationRight = timestamp - this.rightClosedSince;
+        const wasLeftOpen = this.leftClosedSince === null;
+
+        if (wasLeftOpen && durationRight >= this.CLICK_MIN && durationRight <= clickMax) {
+          action = 'right_click';
+        }
+        this.rightClosedSince = null;
+      }
     }
 
     // Cooldown logic
@@ -99,9 +134,5 @@ export class AdaptiveEARDetector {
     }
 
     return 'none';
-  }
-
-  get currentThreshold(): number {
-    return this.baselineEAR * this.RATIO;
   }
 }

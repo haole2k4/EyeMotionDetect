@@ -1,0 +1,33 @@
+{
+  "timestamp": 1794415829,
+  "environment": {
+    "python_version": "3.14.10 (main, Oct 26 2026, 00:00:00) [GCC 16.2.1 20260819 (Red Hat 16.2.1-2)]",
+    "use_numpy": false
+  },
+  "dataset": {
+    "total_samples": 400,
+    "train_samples": 300,
+    "test_samples": 100,
+    "blink_outlier_ratio": 0.15,
+    "head_roll_range_deg": "[-15, +15]",
+    "screen_resolution": "1920x1080",
+    "distance_cm": 60
+  },
+  "results": {
+    "legacy_7d_ridge": {
+      "mae_pixels": 77.66,
+      "median_pixels": 68.77,
+      "r2_score": 0.9592,
+      "angular_error_deg": 2.05,
+      "solve_time_ms": 3.614
+    },
+    "new_18d_roll_invariant_huber": {
+      "mae_pixels": 37.88,
+      "median_pixels": 19.82,
+      "r2_score": 0.9829,
+      "angular_error_deg": 1.0,
+      "solve_time_ms": 64.68
+    },
+    "mae_reduction_percentage": 51.22
+  }
+}

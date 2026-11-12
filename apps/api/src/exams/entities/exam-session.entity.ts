@@ -18,6 +18,13 @@ export enum ExamStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export interface GazeHeatmapPoint {
+  x: number;
+  y: number;
+  t: number;
+  qIdx?: number;
+}
+
 @Entity('exam_sessions')
 export class ExamSession {
   @PrimaryGeneratedColumn('uuid')
@@ -42,6 +49,12 @@ export class ExamSession {
 
   @Column({ type: 'timestamp', nullable: true })
   endTime?: Date;
+
+  @Column('jsonb', { nullable: true })
+  gazeHeatmap?: GazeHeatmapPoint[] | null;
+
+  @Column({ type: 'int', default: 0 })
+  faceLossPauseCount!: number;
 
   @OneToMany(() => UserAnswer, (answer) => answer.session, { cascade: true })
   answers!: Relation<UserAnswer[]>;

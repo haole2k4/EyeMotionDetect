@@ -8,15 +8,23 @@ export interface CalibrationSample {
 }
 
 export interface GazeFeatures {
-  irisXLeft:  number;
-  irisYLeft:  number;
+  irisXLeft: number;
+  irisYLeft: number;
   irisXRight: number;
   irisYRight: number;
   headPitch: number;
-  headYaw:   number;
-  headRoll:  number;
-  earLeft:  number;
+  headYaw: number;
+  headRoll: number;
+  earLeft: number;
   earRight: number;
   faceDetected: boolean;
   isOccluded?: boolean;
+
+  // Extended 18D & pipeline fields
+  iod?: number;
+  faceX?: number;
+  faceY?: number;
+  feature18?: number[];
+  lightingScore?: number;
+  headPoseOk?: boolean;
 }

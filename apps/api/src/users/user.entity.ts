@@ -8,6 +8,15 @@ import {
 import type { Relation } from 'typeorm';
 import { GazeWeights } from '../weights/weights.entity';
 
+export interface AccessibilityProfile {
+  dominantEye: 'both' | 'left' | 'right';
+  triggerMode: 'blink' | 'dwell';
+  dwellTimeMs: number;
+  blinkDurationMs: number;
+  ttsEnabled: boolean;
+  magneticStrength: number;
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -24,6 +33,9 @@ export class User {
 
   @Column({ default: 'user' })
   role!: string;
+
+  @Column('jsonb', { nullable: true })
+  accessibilityProfile?: AccessibilityProfile | null;
 
   @CreateDateColumn()
   createdAt!: Date;

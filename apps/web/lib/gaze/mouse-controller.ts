@@ -2,93 +2,67 @@
 
 export class WebCursorController {
   private cursorEl: HTMLElement | null = null;
-  private observer: MutationObserver | null = null;
-
-  // Dwell-Time Click state
-  private dwellStartX = -1;
-  private dwellStartY = -1;
-  private dwellStartTime = 0;
-  private readonly DWELL_RADIUS = 15; // px
-  private readonly DWELL_TIME_MS = 800; // ms
-  private hasClickedInDwell = false;
 
   constructor() {
     if (typeof document !== 'undefined') {
+      const existing = document.getElementById('gaze-cursor');
+      if (existing) {
+        existing.remove();
+      }
+
       this.cursorEl = document.createElement('div');
       this.cursorEl.id = 'gaze-cursor';
       this.cursorEl.style.cssText = `
-        position: fixed; width: 20px; height: 20px;
-        border-radius: 50%; background: rgba(255,100,100,0.7);
-        pointer-events: none; z-index: 99999;
-        transform: translate(-50%, -50%);
-        transition: opacity 0.1s;
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.55) 0%, rgba(56, 189, 248, 0.15) 60%, transparent 100%);
+        border: 2px solid rgba(56, 189, 248, 0.8);
+        box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+        pointer-events: none;
+        z-index: 99999;
+        will-change: transform;
+        transition: transform 0.04s cubic-bezier(0, 0, 0.2, 1), opacity 0.15s ease-out;
+        transform: translate3d(-100px, -100px, 0);
       `;
       document.body.appendChild(this.cursorEl);
-
-      // Theo dõi thay đổi DOM lớn để chống lag
-      this.observer = new MutationObserver(() => {
-        // Reset timer nếu giao diện giật
-        this.dwellStartTime = 0;
-      });
-      this.observer.observe(document.body, { childList: true, subtree: true });
     }
   }
 
-  private dispatchClickEvent(x: number, y: number) {
-    const el = document.elementFromPoint(x, y);
-    if (!el) return;
-    const evt = new MouseEvent('click', {
-      view: window,
-      bubbles: true,
-      cancelable: true,
-      clientX: x,
-      clientY: y
-    });
-    el.dispatchEvent(evt);
-  }
-
-  moveTo(x: number, y: number): void {
+  moveTo(x: number, y: number, isSnapped = false): void {
     if (this.cursorEl) {
-      this.cursorEl.style.left = `${x}px`;
-      this.cursorEl.style.top  = `${y}px`;
+      const scale = isSnapped ? 1.25 : 1.0;
+      this.cursorEl.style.transform = `translate3d(${x - 18}px, ${y - 18}px, 0) scale(${scale})`;
+      if (isSnapped) {
+        this.cursorEl.style.borderColor = 'rgba(234, 179, 8, 0.95)';
+        this.cursorEl.style.boxShadow = '0 0 20px rgba(234, 179, 8, 0.6)';
+      } else {
+        this.cursorEl.style.borderColor = 'rgba(56, 189, 248, 0.8)';
+        this.cursorEl.style.boxShadow = '0 0 16px rgba(56, 189, 248, 0.4)';
+      }
     }
+  }
 
-    const t = performance.now();
-    const dist = Math.hypot(x - this.dwellStartX, y - this.dwellStartY);
-
-    if (dist > this.DWELL_RADIUS) {
-      // Chuột di chuyển xa -> reset timer
-      this.dwellStartX = x;
-      this.dwellStartY = y;
-      this.dwellStartTime = t;
-      this.hasClickedInDwell = false;
-      
-      if (this.cursorEl) {
-        this.cursorEl.style.background = 'rgba(255,100,100,0.7)';
-      }
-    } else {
-      // Ổn định trong vùng dwell
-      if (!this.hasClickedInDwell && (t - this.dwellStartTime) >= this.DWELL_TIME_MS) {
-        this.dispatchClickEvent(x, y);
-        this.hasClickedInDwell = true;
-        
+  flashClickEffect(): void {
+    if (this.cursorEl) {
+      this.cursorEl.style.background =
+        'radial-gradient(circle, rgba(74, 222, 128, 0.85) 0%, rgba(74, 222, 128, 0.3) 70%, transparent 100%)';
+      setTimeout(() => {
         if (this.cursorEl) {
-          // Hiển thị effect chớp nháy khi click
-          this.cursorEl.style.background = 'rgba(100,255,100,0.9)';
-          setTimeout(() => {
-            if (this.cursorEl) this.cursorEl.style.background = 'rgba(255,100,100,0.7)';
-          }, 150);
+          this.cursorEl.style.background =
+            'radial-gradient(circle, rgba(56, 189, 248, 0.55) 0%, rgba(56, 189, 248, 0.15) 60%, transparent 100%)';
         }
-      }
+      }, 140);
     }
   }
 
   destroy(): void {
-    if (this.observer) {
-      this.observer.disconnect();
-    }
     if (this.cursorEl && this.cursorEl.parentNode) {
       this.cursorEl.parentNode.removeChild(this.cursorEl);
+      this.cursorEl = null;
     }
   }
 }

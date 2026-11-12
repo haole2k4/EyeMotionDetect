@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, Plus, Search, Trash2, Accessibility, Eye, Sparkles, Volume2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,15 @@ import {
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 
+export interface AccessibilityProfile {
+  dominantEye: 'both' | 'left' | 'right';
+  triggerMode: 'blink' | 'dwell';
+  dwellTimeMs: number;
+  blinkDurationMs: number;
+  ttsEnabled: boolean;
+  magneticStrength: number;
+}
+
 interface DashboardUser {
   id: string;
   username: string;
@@ -29,7 +38,17 @@ interface DashboardUser {
   role: string;
   calibrated: boolean;
   createdAt: string;
+  accessibilityProfile?: AccessibilityProfile | null;
 }
+
+const defaultAccessibility: AccessibilityProfile = {
+  dominantEye: 'both',
+  triggerMode: 'dwell',
+  dwellTimeMs: 1000,
+  blinkDurationMs: 350,
+  ttsEnabled: true,
+  magneticStrength: 0.7,
+};
 
 const createUserSchema = z.object({
   username: z.string().min(3, 'Tên đăng nhập tối thiểu 3 ký tự').max(50, 'Tên đăng nhập tối đa 50 ký tự'),
@@ -43,6 +62,12 @@ const editUserSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu mới tối thiểu 6 ký tự').or(z.literal('')),
   role: z.enum(['admin', 'user']),
+  dominantEye: z.enum(['both', 'left', 'right']),
+  triggerMode: z.enum(['blink', 'dwell']),
+  dwellTimeMs: z.coerce.number().min(500).max(3000),
+  blinkDurationMs: z.coerce.number().min(200).max(1000),
+  ttsEnabled: z.boolean(),
+  magneticStrength: z.coerce.number().min(0).max(1),
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
@@ -107,6 +132,12 @@ export default function UsersManagement() {
       email: '',
       password: '',
       role: 'user',
+      dominantEye: 'both',
+      triggerMode: 'dwell',
+      dwellTimeMs: 1000,
+      blinkDurationMs: 350,
+      ttsEnabled: true,
+      magneticStrength: 0.7,
     },
   });
 
@@ -152,15 +183,26 @@ export default function UsersManagement() {
       id: string;
       payload: EditUserFormValues;
     }) => {
+      const accessibilityProfile: AccessibilityProfile = {
+        dominantEye: payload.dominantEye,
+        triggerMode: payload.triggerMode,
+        dwellTimeMs: payload.dwellTimeMs,
+        blinkDurationMs: payload.blinkDurationMs,
+        ttsEnabled: payload.ttsEnabled,
+        magneticStrength: payload.magneticStrength,
+      };
+
       const updatePayload: {
         username: string;
         email: string;
         role: 'admin' | 'user';
         password?: string;
+        accessibilityProfile: AccessibilityProfile;
       } = {
         username: payload.username,
         email: payload.email,
         role: payload.role,
+        accessibilityProfile,
       };
 
       const trimmedPassword = payload.password.trim();
@@ -168,18 +210,22 @@ export default function UsersManagement() {
         updatePayload.password = trimmedPassword;
       }
 
+      // Update basic details and accessibility profile
       const response = await api.put(`/users/${id}`, updatePayload);
+
+      // Also ensure direct accessibility endpoint receives the update
+      try {
+        await api.put(`/users/${id}/accessibility`, accessibilityProfile);
+      } catch (err) {
+        console.warn('Direct accessibility endpoint warning:', err);
+      }
+
       return response.data;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setEditingUser(null);
-      editForm.reset({
-        username: '',
-        email: '',
-        password: '',
-        role: 'user',
-      });
+      editForm.reset();
       setErrorMessage(null);
     },
     onError: (error: unknown) => {
@@ -218,14 +264,31 @@ export default function UsersManagement() {
 
   const totalUsers = usersQuery.data?.length ?? 0;
 
-  const openEditDialog = (user: DashboardUser) => {
+  const openEditDialog = async (user: DashboardUser) => {
     setErrorMessage(null);
     setEditingUser(user);
+
+    let profile = user.accessibilityProfile || defaultAccessibility;
+    try {
+      const res = await api.get<AccessibilityProfile>(`/users/${user.id}/accessibility`);
+      if (res.data) {
+        profile = res.data;
+      }
+    } catch {
+      // Use fallback profile
+    }
+
     editForm.reset({
       username: user.username,
       email: user.email,
       password: '',
       role: user.role === 'admin' ? 'admin' : 'user',
+      dominantEye: profile.dominantEye || 'both',
+      triggerMode: profile.triggerMode || 'dwell',
+      dwellTimeMs: profile.dwellTimeMs || 1000,
+      blinkDurationMs: profile.blinkDurationMs || 350,
+      ttsEnabled: profile.ttsEnabled ?? true,
+      magneticStrength: profile.magneticStrength ?? 0.7,
     });
   };
 
@@ -265,7 +328,9 @@ export default function UsersManagement() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý người dùng</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Thêm, chỉnh sửa, xóa và tìm kiếm tài khoản người dùng.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Quản lý tài khoản, phân quyền và cấu hình hồ sơ trợ năng (Accessibility Profile) cho học viên.
+          </p>
         </div>
 
         <Button
@@ -317,6 +382,7 @@ export default function UsersManagement() {
                 <th className="px-6 py-4 font-semibold">Email</th>
                 <th className="px-6 py-4 font-semibold">Tên đăng nhập</th>
                 <th className="px-6 py-4 font-semibold">Vai trò</th>
+                <th className="px-6 py-4 font-semibold">Cấu hình Trợ năng</th>
                 <th className="px-6 py-4 font-semibold">Hiệu chuẩn</th>
                 <th className="px-6 py-4 font-semibold">Ngày tham gia</th>
                 <th className="px-6 py-4 font-semibold">Thao tác</th>
@@ -325,7 +391,7 @@ export default function UsersManagement() {
             <tbody className="divide-y divide-border">
               {usersQuery.isPending ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="size-4 animate-spin" />
                       Đang tải danh sách người dùng...
@@ -336,7 +402,7 @@ export default function UsersManagement() {
 
               {usersQuery.isError ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-rose-600">
+                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-rose-600">
                     Không thể tải dữ liệu từ server.
                   </td>
                 </tr>
@@ -344,85 +410,103 @@ export default function UsersManagement() {
 
               {usersQuery.isSuccess && filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
                     Không tìm thấy người dùng phù hợp.
                   </td>
                 </tr>
               ) : null}
 
               {usersQuery.isSuccess
-                ? filteredUsers.map((user, index) => (
-                    <motion.tr
-                      key={user.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.04 }}
-                      className="hover:bg-blue-50/30"
-                    >
-                      <td className="px-6 py-4 font-semibold text-foreground">{user.email}</td>
-                      <td className="px-6 py-4 text-foreground">{user.username}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`rounded-md px-3 py-1 text-xs font-semibold ${
-                            user.role === 'admin'
-                              ? 'bg-purple-500/20 text-purple-400'
-                              : 'bg-slate-500/20 text-slate-300'
-                          }`}
-                        >
-                          {user.role === 'admin' ? 'Quản trị viên' : 'Học viên'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`rounded-md border px-3 py-1 text-xs font-semibold ${
-                            user.calibrated
-                              ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-400'
-                              : 'border-rose-500/30 bg-rose-500/20 text-rose-400'
-                          }`}
-                        >
-                          {user.calibrated ? 'Đã thiết lập' : 'Chưa thiết lập'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                        {new Date(user.createdAt).toLocaleDateString('vi-VN')}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openEditDialog(user)}
-                            disabled={updateUserMutation.isPending}
-                            className="rounded-lg"
+                ? filteredUsers.map((user, index) => {
+                    const prof = user.accessibilityProfile;
+                    return (
+                      <motion.tr
+                        key={user.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.04 }}
+                        className="hover:bg-blue-50/30"
+                      >
+                        <td className="px-6 py-4 font-semibold text-foreground">{user.email}</td>
+                        <td className="px-6 py-4 text-foreground">{user.username}</td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`rounded-md px-3 py-1 text-xs font-semibold ${
+                              user.role === 'admin'
+                                ? 'bg-purple-500/20 text-purple-400'
+                                : 'bg-slate-500/20 text-slate-300'
+                            }`}
                           >
-                            <Pencil className="size-3.5" />
-                            Sửa
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              setErrorMessage(null);
-                              setDeletingUser(user);
-                            }}
-                            disabled={deleteUserMutation.isPending}
-                            className="rounded-lg"
+                            {user.role === 'admin' ? 'Quản trị viên' : 'Học viên'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1 text-xs">
+                            <span className="inline-flex items-center gap-1.5 font-medium text-slate-300">
+                              <Eye className="size-3 text-cyan-400" />
+                              {prof?.triggerMode === 'blink'
+                                ? `Nhắm mắt (${prof.blinkDurationMs || 350}ms)`
+                                : `Nhìn giữ Dwell (${prof?.dwellTimeMs || 1000}ms)`}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                              <Sparkles className="size-3 text-amber-400" />
+                              Hút từ tính: {Math.round((prof?.magneticStrength ?? 0.7) * 100)}% | TTS: {prof?.ttsEnabled !== false ? 'Bật' : 'Tắt'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`rounded-md border px-3 py-1 text-xs font-semibold ${
+                              user.calibrated
+                                ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-400'
+                                : 'border-rose-500/30 bg-rose-500/20 text-rose-400'
+                            }`}
                           >
-                            <Trash2 className="size-3.5" />
-                            Xóa
-                          </Button>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))
+                            {user.calibrated ? 'Đã thiết lập' : 'Chưa thiết lập'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {new Date(user.createdAt).toLocaleDateString('vi-VN')}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openEditDialog(user)}
+                              disabled={updateUserMutation.isPending}
+                              className="rounded-lg"
+                            >
+                              <Pencil className="size-3.5" />
+                              Sửa
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => {
+                                setErrorMessage(null);
+                                setDeletingUser(user);
+                              }}
+                              disabled={deleteUserMutation.isPending}
+                              className="rounded-lg"
+                            >
+                              <Trash2 className="size-3.5" />
+                              Xóa
+                            </Button>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    );
+                  })
                 : null}
             </tbody>
           </table>
         </div>
       </Card>
 
+      {/* Dialog Tạo người dùng */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -516,88 +600,205 @@ export default function UsersManagement() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Chỉnh sửa người dùng & Hồ sơ Trợ năng WCAG */}
       <Dialog
         open={Boolean(editingUser)}
         onOpenChange={(open) => {
           if (!open) {
             setEditingUser(null);
-            editForm.reset({
-              username: '',
-              email: '',
-              password: '',
-              role: 'user',
-            });
+            editForm.reset();
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Chỉnh sửa người dùng</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Accessibility className="size-5 text-blue-500" />
+              Chỉnh sửa người dùng & Hồ sơ Trợ năng
+            </DialogTitle>
             <DialogDescription>
-              Cập nhật email, vai trò hoặc mật khẩu mới cho tài khoản đã chọn.
+              Cấu hình tài khoản và thiết lập tương tác bằng cử chỉ mắt cá nhân hóa cho học viên.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={editForm.handleSubmit(handleUpdateUser)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-user-username">Tên đăng nhập</Label>
-              <Input
-                id="edit-user-username"
-                type="text"
-                {...editForm.register('username')}
-                className={editForm.formState.errors.username ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
-              />
-              {editForm.formState.errors.username ? (
-                <p className="text-sm font-medium text-rose-600">
-                  {editForm.formState.errors.username.message}
-                </p>
-              ) : null}
+          <form onSubmit={editForm.handleSubmit(handleUpdateUser)} className="space-y-5">
+            {/* Account Details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-username">Tên đăng nhập</Label>
+                <Input
+                  id="edit-user-username"
+                  type="text"
+                  {...editForm.register('username')}
+                  className={editForm.formState.errors.username ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-email">Email</Label>
+                <Input
+                  id="edit-user-email"
+                  type="email"
+                  {...editForm.register('email')}
+                  className={editForm.formState.errors.email ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-user-email">Email</Label>
-              <Input
-                id="edit-user-email"
-                type="email"
-                {...editForm.register('email')}
-                className={editForm.formState.errors.email ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
-              />
-              {editForm.formState.errors.email ? (
-                <p className="text-sm font-medium text-rose-600">
-                  {editForm.formState.errors.email.message}
-                </p>
-              ) : null}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-password">Mật khẩu mới (tùy chọn)</Label>
+                <Input
+                  id="edit-user-password"
+                  type="password"
+                  placeholder="Để trống nếu không đổi"
+                  {...editForm.register('password')}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-role">Vai trò</Label>
+                <select
+                  id="edit-user-role"
+                  {...editForm.register('role')}
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
+                >
+                  <option value="user" className="bg-card text-foreground">Học viên</option>
+                  <option value="admin" className="bg-card text-foreground">Quản trị viên</option>
+                </select>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-user-password">Mật khẩu mới (tùy chọn)</Label>
-              <Input
-                id="edit-user-password"
-                type="password"
-                placeholder="Để trống nếu không đổi"
-                {...editForm.register('password')}
-                className={editForm.formState.errors.password ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
-              />
-              {editForm.formState.errors.password ? (
-                <p className="text-sm font-medium text-rose-600">
-                  {editForm.formState.errors.password.message}
-                </p>
-              ) : null}
+            {/* Accessibility Profile Section */}
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-4 space-y-4">
+              <h3 className="text-sm font-bold text-cyan-300 flex items-center gap-2 uppercase tracking-wide">
+                <Sparkles className="size-4 text-cyan-400" />
+                Cấu hình Hồ sơ Trợ năng (Accessibility Profile)
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Dominant Eye */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-user-dominantEye" className="text-xs font-semibold">
+                    Mắt chủ đạo (Dominant Eye)
+                  </Label>
+                  <select
+                    id="edit-user-dominantEye"
+                    {...editForm.register('dominantEye')}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs outline-none focus:border-cyan-500"
+                  >
+                    <option value="both">Cả hai mắt (Both Eyes)</option>
+                    <option value="left">Chỉ mắt trái (Left Eye Only)</option>
+                    <option value="right">Chỉ mắt phải (Right Eye Only)</option>
+                  </select>
+                </div>
+
+                {/* Trigger Mode */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-user-triggerMode" className="text-xs font-semibold">
+                    Phương thức kích hoạt (Trigger Mode)
+                  </Label>
+                  <select
+                    id="edit-user-triggerMode"
+                    {...editForm.register('triggerMode')}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs outline-none focus:border-cyan-500"
+                  >
+                    <option value="dwell">Nhìn giữ Dwell-time</option>
+                    <option value="blink">Nhắm mắt chủ đích (Intentional Blink)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Dwell Time */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <Label htmlFor="edit-user-dwellTimeMs" className="font-semibold">
+                      Thời gian nhìn giữ (Dwell Time)
+                    </Label>
+                    <span className="text-cyan-400 font-mono font-bold">
+                      {editForm.watch('dwellTimeMs')} ms
+                    </span>
+                  </div>
+                  <Input
+                    id="edit-user-dwellTimeMs"
+                    type="range"
+                    min="500"
+                    max="2000"
+                    step="50"
+                    {...editForm.register('dwellTimeMs')}
+                    className="h-2 cursor-pointer bg-slate-800"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Khoảng khuyến nghị: 800ms - 1500ms</p>
+                </div>
+
+                {/* Blink Duration */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <Label htmlFor="edit-user-blinkDurationMs" className="font-semibold">
+                      Thời gian nhắm mắt (Blink Duration)
+                    </Label>
+                    <span className="text-cyan-400 font-mono font-bold">
+                      {editForm.watch('blinkDurationMs')} ms
+                    </span>
+                  </div>
+                  <Input
+                    id="edit-user-blinkDurationMs"
+                    type="range"
+                    min="200"
+                    max="800"
+                    step="25"
+                    {...editForm.register('blinkDurationMs')}
+                    className="h-2 cursor-pointer bg-slate-800"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Khoảng khuyến nghị: 250ms - 450ms</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {/* Magnetic Strength */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <Label htmlFor="edit-user-magneticStrength" className="font-semibold">
+                      Lực hút con trỏ từ tính (Magnetic Snap)
+                    </Label>
+                    <span className="text-cyan-400 font-mono font-bold">
+                      {Math.round(editForm.watch('magneticStrength') * 100)}%
+                    </span>
+                  </div>
+                  <Input
+                    id="edit-user-magneticStrength"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    {...editForm.register('magneticStrength')}
+                    className="h-2 cursor-pointer bg-slate-800"
+                  />
+                </div>
+
+                {/* TTS Toggle */}
+                <div className="flex items-center justify-between p-2 rounded-lg border border-border bg-background">
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="size-4 text-cyan-400" />
+                    <div>
+                      <Label htmlFor="edit-user-ttsEnabled" className="text-xs font-semibold cursor-pointer">
+                        Đọc đề tự động (TTS)
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground">Tự động phát âm câu hỏi vi-VN</p>
+                    </div>
+                  </div>
+                  <input
+                    id="edit-user-ttsEnabled"
+                    type="checkbox"
+                    {...editForm.register('ttsEnabled')}
+                    className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-user-role">Vai trò</Label>
-              <select
-                id="edit-user-role"
-                {...editForm.register('role')}
-                className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
-              >
-                <option value="user" className="bg-card text-foreground">Học viên</option>
-                <option value="admin" className="bg-card text-foreground">Quản trị viên</option>
-              </select>
-            </div>
-
-            <DialogFooter className="mt-2">
+            <DialogFooter className="mt-4">
               <Button
                 type="button"
                 variant="outline"
@@ -620,6 +821,7 @@ export default function UsersManagement() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Xóa người dùng */}
       <Dialog
         open={Boolean(deletingUser)}
         onOpenChange={(open) => {
@@ -662,7 +864,6 @@ export default function UsersManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </motion.div>
   );
 }

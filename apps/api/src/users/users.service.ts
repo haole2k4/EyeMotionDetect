@@ -8,7 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { User } from './user.entity';
+import { User, AccessibilityProfile } from './user.entity';
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -80,7 +80,34 @@ export class UsersService implements OnModuleInit {
       role: user.role,
       createdAt: user.createdAt,
       calibrated: !!user.gazeWeights,
+      accessibilityProfile: user.accessibilityProfile ?? null,
     }));
+  }
+
+  async updateAccessibility(
+    id: string,
+    profile: Partial<AccessibilityProfile>,
+  ): Promise<AccessibilityProfile> {
+    const user = await this.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const defaultProfile: AccessibilityProfile = {
+      dominantEye: 'both',
+      triggerMode: 'blink',
+      dwellTimeMs: 900,
+      blinkDurationMs: 350,
+      ttsEnabled: true,
+      magneticStrength: 0.8,
+    };
+    const updatedProfile: AccessibilityProfile = {
+      ...defaultProfile,
+      ...(user.accessibilityProfile || {}),
+      ...profile,
+    };
+    user.accessibilityProfile = updatedProfile;
+    await this.usersRepository.save(user);
+    return updatedProfile;
   }
 
   async create(user: Partial<User>): Promise<User> {

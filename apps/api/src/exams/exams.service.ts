@@ -8,7 +8,11 @@ import { Repository, In } from 'typeorm';
 import { Exam } from './entities/exam.entity';
 import { Question } from '../questions/question.entity';
 import { User } from '../users/user.entity';
-import { ExamSession, ExamStatus } from './entities/exam-session.entity';
+import {
+  ExamSession,
+  ExamStatus,
+  GazeHeatmapPoint,
+} from './entities/exam-session.entity';
 import { UserAnswer } from './entities/user-answer.entity';
 
 @Injectable()
@@ -171,9 +175,79 @@ export class ExamsService {
     return answer;
   }
 
-  async finishExam(sessionId: string, userId: string) {
+  async updateTelemetry(
+    sessionId: string,
+    userId: string,
+    data: {
+      gazeHeatmap?: GazeHeatmapPoint[];
+      faceLossPauseCount?: number;
+    },
+  ) {
+    const session = await this.getSession(sessionId, userId);
+    if (!session) throw new NotFoundException('Không tìm thấy phiên làm bài');
+
+    if (data.faceLossPauseCount !== undefined) {
+      session.faceLossPauseCount = data.faceLossPauseCount;
+    }
+
+    if (data.gazeHeatmap && Array.isArray(data.gazeHeatmap)) {
+      const existing = session.gazeHeatmap || [];
+      const merged = [...existing, ...data.gazeHeatmap];
+      // Tối đa 500 điểm rút gọn mỗi phiên
+      session.gazeHeatmap = merged.length > 500 ? merged.slice(-500) : merged;
+    }
+
+    await this.sessionRepo.save(session);
+    return {
+      success: true,
+      pointCount: session.gazeHeatmap?.length ?? 0,
+      faceLossPauseCount: session.faceLossPauseCount ?? 0,
+    };
+  }
+
+  async getSessionHeatmap(sessionId: string) {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId },
+      relations: ['user', 'exam'],
+    });
+    if (!session) throw new NotFoundException('Không tìm thấy phiên làm bài');
+
+    return {
+      sessionId: session.id,
+      userId: session.user?.id,
+      username: session.user?.username,
+      examId: session.exam?.id,
+      examTitle: session.exam?.title,
+      score: session.score,
+      status: session.status,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      faceLossPauseCount: session.faceLossPauseCount ?? 0,
+      gazeHeatmap: session.gazeHeatmap || [],
+    };
+  }
+
+  async finishExam(
+    sessionId: string,
+    userId: string,
+    telemetry?: {
+      gazeHeatmap?: GazeHeatmapPoint[];
+      faceLossPauseCount?: number;
+    },
+  ) {
     const session = await this.getSession(sessionId, userId);
     if (session.status === ExamStatus.COMPLETED) return session;
+
+    if (telemetry) {
+      if (telemetry.faceLossPauseCount !== undefined) {
+        session.faceLossPauseCount = telemetry.faceLossPauseCount;
+      }
+      if (telemetry.gazeHeatmap && Array.isArray(telemetry.gazeHeatmap)) {
+        const existing = session.gazeHeatmap || [];
+        const merged = [...existing, ...telemetry.gazeHeatmap];
+        session.gazeHeatmap = merged.length > 500 ? merged.slice(-500) : merged;
+      }
+    }
 
     const totalQuestions = session.exam.questions.length;
     const correctAnswers =
@@ -187,12 +261,11 @@ export class ExamsService {
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
 
-    await this.sessionRepo.update(sessionId, {
-      endTime: new Date(),
-      status: ExamStatus.COMPLETED,
-      score,
-    });
+    session.endTime = new Date();
+    session.status = ExamStatus.COMPLETED;
+    session.score = score;
 
+    await this.sessionRepo.save(session);
     return this.getSession(sessionId, userId);
   }
 }

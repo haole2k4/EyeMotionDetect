@@ -1,0 +1,11 @@
+[package]
+name = "gaze-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["EyeMotionDetect Team"]
+description = "Pure Rust math core for real-time gaze tracking and gesture recognition"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
