@@ -166,8 +166,10 @@ def main():
     print("=" * 70)
     
     out_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(out_dir, "mobile_gazenet_weights.json")
-    onnx_path = os.path.join(out_dir, "mobile_gazenet.onnx")
+    artifacts_dir = os.path.join(out_dir, "artifacts")
+    os.makedirs(artifacts_dir, exist_ok=True)
+    json_path = os.path.join(artifacts_dir, "mobile_gazenet_weights.json")
+    onnx_path = os.path.join(artifacts_dir, "mobile_gazenet.onnx")
 
     if TORCH_AVAILABLE:
         print("[+] PyTorch detected.")

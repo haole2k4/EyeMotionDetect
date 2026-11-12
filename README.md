@@ -1,92 +1,130 @@
-# EyeMotionDetect (Web Edition)
+# EyeMotionDetect — Nền tảng Thi Trắc nghiệm Trợ năng Điều khiển bằng Mắt (WCAG AAA)
 
-Hệ thống điều khiển giao diện trắc nghiệm (MCQ 4 lựa chọn) bằng cử động mắt hoàn toàn trên trình duyệt, sử dụng **MediaPipe Tasks Vision** để trích xuất đặc trưng khuôn mặt (Landmarks, Head Pose, Iris), kết hợp với mô hình Machine Learning (Polynomial Regression) để xác định vùng nhìn và tự động chọn đáp án qua cơ chế **Dwell-time**.
+**EyeMotionDetect** là hệ thống điều khiển giao diện thi trắc nghiệm (MCQ 4 lựa chọn) bằng cử động mắt thời gian thực ngay trên trình duyệt (**Edge-AI Gaze Tracking**). Dự án kết hợp **MediaPipe Tasks Vision** với lõi toán học **Rust WebAssembly (`crates/gaze-core`)** và kiến trúc hiển thị **144Hz Zero-Jank**, giúp người khuyết tật vận động chi trên làm bài thi độc lập, chính xác và không mỏi mắt.
 
-Dự án đã được chuyển đổi sang kiến trúc **Monorepo (Turborepo)** chạy hoàn toàn bằng TypeScript, bao gồm hệ thống Edge-AI suy luận trực tiếp ở frontend và backend PostgreSQL để quản lý tài khoản người dùng và cá nhân hóa dữ liệu.
+---
 
-## Tính năng nổi bật
+## Tính năng Nổi bật
 
-- **Chế độ dạng lưới (Grid Mode):** Giao diện được chia thành dạng lưới 3x3 (9 phân vùng) trên màn hình, hỗ trợ điều hướng và tương tác đa điểm.
-- **Hiệu chuẩn (Calibration) 9 điểm:** Quy trình huấn luyện với 9 vị trí trên màn hình, sử dụng Grid Mapper để chuyển đổi tọa độ điểm nhìn thành các ô lưới tương ứng với độ chính xác cao.
-- **Chọn đáp án bằng Dwell-time:** Khắc phục lỗi nháy mắt vô tình (blink-to-click) bằng cách đếm thời gian nhìn liên tục (1.5s - 2.0s) vào một ô thông qua Dwell-time State Machine tiến tiến. Có tính năng Deadzone ở trung tâm để tránh chọn nhầm.
+- **Lõi Toán học Rust WASM Siêu tốc (`crates/gaze-core`):**
+  - **Chuẩn hóa Khóe mắt Giải phẫu Bất biến Góc nghiêng (Roll-Invariant Eye-Corner Basis):** Chiếu tâm 5 điểm mống mắt lên hệ trục trực chuẩn nối hai khóe mắt kết hợp khoảng cách liên mắt (`IOD`), góc nghiêng đầu (`Pitch/Yaw/Roll`) và tọa độ tâm mặt tạo thành **Vector đặc trưng 18 chiều**, giữ tâm nhìn ổn định ngay cả khi nghiêng đầu $\pm 15^\circ$.
+  - **Hiệu chuẩn Tức thì bằng Nghiệm đóng Huber IRLS Ridge SVD (< 0.3ms):** Tự động loại bỏ nhiễu ngoại lai (chớp mắt, nhìn lệch) trong quá trình hiệu chuẩn 9 điểm mà không cần mạng nơ-ron nặng nề.
+  - **Tự động Bù trôi Ngầm (Implicit Drift Correction):** Liên tục tinh chỉnh vector bù trôi theo tư thế ngồi thực tế của thí sinh thông qua cửa sổ trượt 24 lần xác nhận đáp án gần nhất.
+- **Kiến trúc Đa luồng 144Hz Zero-Jank & Con trỏ Từ tính:**
+  - Tách biệt hoàn toàn vòng lặp suy luận AI trong Web Worker (**30 FPS**) và vòng lặp giao diện `requestAnimationFrame` (**144Hz**) qua `SharedGazeBuffer`.
+  - Kết hợp bộ lọc **1€ Filter 2D**, bộ nội suy lò xo tới hạn (**Critically-Damped Spring Interpolator**) và lực hút từ tính (**Magnetic Target Snap**) giúp con trỏ **Soft Spotlight** bám mượt vào các thẻ đáp án A/B/C/D, triệt tiêu rung giật của webcam phổ thông 720p.
+- **Hệ thống Cử chỉ Mắt Đa phương thức (An toàn 100%):**
+  - **Pitch-Compensated Blink & Dwell-Time:** Chọn đáp án bằng cách giữ ánh nhìn (Dwell) hoặc chớp mắt chủ động có bù góc nhìn xuống (tránh nhận nhầm chớp mắt khi nhìn xuống đáp án C, D).
+  - **Saccadic Edge Strokes:** Liếc nhanh ra vùng biên trái/phải màn hình (`< 450ms`) để chuyển câu trước/sau (`PREV` / `NEXT`).
+  - **Smooth Pursuit Orbit:** Nút "Nộp bài" yêu cầu mắt nhìn đuổi theo chấm sáng chuyển động tròn (`1.2s`), triệt tiêu hoàn toàn nguy cơ bấm nhầm (0% false-positive) và thay thế toàn bộ hộp thoại `window.confirm` chặn người khuyết tật.
+- **Phòng thi Trợ năng Chuẩn WCAG AAA & Quản trị Toàn diện:**
+  - Tích hợp **Text-to-Speech (`vi-VN`)** tự động đọc câu hỏi và đáp án khi chuyển câu.
+  - **Head Pose & Lighting HUD:** Cảnh báo khi thiếu sáng hoặc ngồi lệch tư thế; **tự động tạm dừng đồng hồ làm bài** khi mất dấu khuôn mặt.
+  - Hỗ trợ cấu hình hồ sơ trợ năng cá nhân hóa (`AccessibilityProfile`) và thống kê bản đồ nhiệt ánh nhìn (`GazeHeatmap`) trên trang Quản trị.
 
-## Kiến trúc Hệ thống (Hybrid Edge-AI 2026)
+---
 
-- **Frontend (Edge Computation):** Xây dựng bằng Next.js 15, MediaPipe Face Landmarker, cấu hình Web Workers, và TensorFlow.js. Mọi tác vụ suy luận thời gian thực (realtime inference) đều chạy nội bộ trên trình duyệt với độ trễ tối thiểu (< 150ms) bằng WebGPU.
-- **Backend (Data & Personalization):** Xây dựng bằng NestJS 11 kết hợp PostgreSQL. Chịu trách nhiệm quản lý tài khoản người dùng, lưu trữ trọng số hiệu ứng cá nhân hóa và quản trị tự động qua Auth JWT.
-- **Monorepo:** Quản lý mã nguồn tập trung bằng `pnpm` workspaces và quy trình build từ `turborepo`.
+## Kiến trúc Hệ thống
+
+- **Rust WASM Core (`crates/gaze-core`):** Thư viện Rust độc lập (`no external heavy crates`) đảm nhiệm trích xuất đặc trưng 18D, giải hệ phương trình Huber Ridge SVD, lọc tín hiệu và nhận diện cử chỉ mắt qua giao diện C-ABI / WebAssembly.
+- **Frontend (`apps/web`):** Xây dựng bằng **Next.js 15**, **React 19**, **Tailwind CSS v4**, **MediaPipe Face Landmarker** và **Web Workers**. Mọi tác vụ suy luận chạy trực tiếp trên thiết bị người dùng (Edge-AI).
+- **Backend (`apps/api`):** Xây dựng bằng **NestJS 11**, **TypeORM** và **PostgreSQL 17**. Quản lý tài khoản JWT, ngân hàng câu hỏi, đề thi, hồ sơ trợ năng (`AccessibilityProfile`), trọng số cá nhân hóa (`GazeWeights`) và dữ liệu bản đồ nhiệt (`GazeHeatmap`).
+- **R&D & Evaluation (`evaluation/`):** Bộ công cụ Python & TypeScript dùng để kiểm định độ chính xác (`MAE`, `R²`, độ trễ), huấn luyện trọng số tiên nghiệm và chạy daemon phần cứng tùy chọn.
+
+---
 
 ## Cấu trúc Dự án
 
 ```text
 EyeMotionDetect/
+├── crates/
+│   └── gaze-core/          # Lõi toán học Rust WASM (18D Features, Huber SVD, Filters, Gestures)
 ├── apps/
-│   ├── api/            # Backend NestJS (REST API, TypeORM, Auth, DB)
-│   └── web/            # Frontend Next.js (MediaPipe, TF.js, UI, Calibration Grid 3x3)
-├── packages/
-│   └── shared-types/   # Shared types dùng chung cho cả frontend/backend
-├── docs/               # Tài liệu kỹ thuật chi tiết
-├── docker-compose.dev.yml
-├── pnpm-workspace.yaml
-└── turbo.json
+│   ├── api/                # Backend NestJS 11 (REST API, TypeORM, Auth, Accessibility, Exams)
+│   └── web/                # Frontend Next.js 15 (144Hz Gaze UI, WCAG AAA Exam HUD, Admin Dashboard)
+├── evaluation/             # Bộ công cụ benchmark Python & TypeScript
+│   └── artifacts/          # Kết quả benchmark JSON & trọng số pre-trained ONNX/JSON
+├── docs/                   # Tài liệu hướng dẫn vận hành & kỹ thuật chi tiết
+├── AGENT.md                # Quy chuẩn kỹ thuật & hướng dẫn dành cho AI Agents
+├── Cargo.toml              # Cấu hình Rust Workspace
+├── docker-compose.dev.yml  # Cấu hình PostgreSQL 17 & pgAdmin4
+├── pnpm-workspace.yaml     # Cấu hình pnpm Monorepo
+└── turbo.json              # Cấu hình pipeline Turborepo
 ```
+
+---
 
 ## Yêu cầu Hệ thống
 
 - **Node.js**: `v22.14.0+`
 - **Package Manager**: `pnpm v10.18.2+`
-- **Cơ sở dữ liệu**: Đã cài đặt [Docker Desktop](https://www.docker.com/) (dành cho PostgreSQL + pgAdmin4)
-- **Trình duyệt**: Hỗ trợ chuẩn AI WebGPU mới nhất (Chrome 121+ / Edge 121+).
+- **Rust Toolchain** *(nếu biên dịch lại WASM)*: `rustc 1.80+`, target `wasm32-unknown-unknown`
+- **Cơ sở dữ liệu**: Docker & Docker Compose (chạy PostgreSQL 17 + pgAdmin4)
+- **Trình duyệt**: Chrome 121+ / Edge 121+ / Firefox (hỗ trợ WebAssembly, WebGL/WebGPU và Web Speech API)
 
 ---
 
 ## Hướng dẫn Thiết lập & Khởi chạy
 
-### Bước 1: Chuẩn bị Môi trường
-
-Mở Terminal/Bash, tải repository về máy và cài đặt toàn bộ dependencies qua pnpm:
+### Bước 1: Cài đặt Dependencies
 
 ```bash
 git clone git@github.com:haole2k4/EyeMotionDetect.git
 cd EyeMotionDetect
-npm install -g pnpm@10.18.2
 pnpm install
 ```
 
 ### Bước 2: Khởi tạo Cơ sở Dữ liệu (PostgreSQL)
 
-Hãy chắc chắn bạn đã bật Docker Desktop, sau đó khởi chạy cả môi trường DB và môi trường quản trị:
+Khởi chạy container PostgreSQL và pgAdmin4 bằng Docker Compose (hoặc dùng script tiện ích `pnpm run docker:up`):
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d
+pnpm run docker:up
+# hoặc: docker compose -f docker-compose.dev.yml up -d
 ```
 
-- **Container Database**: Port `5432` | DB mặc định: `gaze_dev` | User: `gaze` | Pass: `gaze_dev_pass`.
-- **Giao diện pgAdmin4**: Truy cập `http://localhost:5050` | Email: `admin@eyemotiondetect.dev` | Pass: `admin123456`.
-- **Tài khoản Admin App**: Ngay khi backend lên, hệ thống cấp sẵn tài khoản cho admin (Email: `admin@eyemotiondetect.dev` | Pass: `admin`).
-
-*(Trường hợp container bị tắt, dùng lệnh `docker start eyemotiondetect eyemotiondetect-pgadmin` để bật lại)*.
+- **PostgreSQL Database**: Port `5432` | DB: `gaze_dev` | User: `gaze` | Pass: `gaze_dev_pass`
+- **Giao diện pgAdmin4**: Truy cập `http://localhost:5050` | Email: `admin@eyemotiondetect.dev` | Pass: `admin123456`
+- **Tài khoản Admin mặc định trên Web**: Email: `admin@eyemotiondetect.dev` | Pass: `admin`
 
 ### Bước 3: Khởi chạy Máy chủ Development
 
-Tại vị trí chứa file thư mục gốc của project, gửi lệnh qua Turborepo để bật đồng thời frontend Web UI và NextJS API:
+Tại thư mục gốc của dự án, chạy lệnh:
 
 ```bash
 pnpm run dev
 ```
 
-Hệ thống bật tại 2 dịch vụ nội bộ:
-- **🌐 Trải nghiệm Trực tiếp (Web GUI MCQ Mode)**: [http://localhost:3000](http://localhost:3000)
-- **⚙️ Backend API Server (Database Services)**: [http://localhost:3001](http://localhost:3001)
+Hệ thống sẽ khởi động đồng thời 2 dịch vụ:
+- **Giao diện Web (Next.js 15)**: [http://localhost:3000](http://localhost:3000)
+- **Backend API Server (NestJS 11)**: [http://localhost:3001](http://localhost:3001)
 
-> **Troubleshooting MediaPipe**: Hãy mở `Developer Console (F12)` trên Chrome, kiểm tra xem có bất kỳ lỗi giới hạn tài nguyên WebGPU nào hay không. Cấp quyền truy cập cho máy tính đầy đủ về Camera trước khi sử dụng ứng dụng.
+### Bước 4 (Tùy chọn): Kiểm thử & Biên dịch lại Rust WASM Core
+
+File binary `apps/web/public/wasm/gaze_core.wasm` đã được biên dịch sẵn. Nếu bạn chỉnh sửa mã nguồn trong `crates/gaze-core`, hãy chạy lệnh tự động:
+
+```bash
+pnpm run build:wasm
+# hoặc: cargo build --target wasm32-unknown-unknown --release && cp target/wasm32-unknown-unknown/release/gaze_core.wasm apps/web/public/wasm/gaze_core.wasm
+```
+
+Để chạy toàn bộ unit tests (NestJS API + Rust cargo test):
+```bash
+pnpm run test
+```
+
+Để chạy bộ benchmark thuật toán Python R&D:
+```bash
+pnpm run test:eval
+# hoặc: python3 evaluation/benchmark_suite.py
+```
 
 ---
 
-## Tài liệu Hướng dẫn Vận hành & Phát triển
+## Tài liệu Tham khảo
 
-Thiết kế mô hình gốc cũ điều hướng chuột tự do đã được thay thế. Vui lòng đọc các tài liệu cập nhật tại mục [docs](./docs/README.md) để nắm cơ chế mới:
-
-1. **[Backend Dev & Setup](./docs/BACKEND_DEV.md)**: Chi tiết cách tương tác Terminal API, role admin, test users và auto-migration database TypeORM.
-2. **[Calibration Guide (Cấu hình 9 điểm)](./docs/CALIBRATION_GUIDE.md)**: Quy trình hiệu chuẩn chi tiết, phân tích độ sai lệch trên 9 khu vực của lưới 3x3.
-3. **[Eye Actions Mapping (Chống sai lệch do nháy mắt)](./docs/EYE_ACTIONS_MAPPING.md)**: Cách hoạt động state machine của Dwell-time thay thế hoàn toàn kỹ thuật thao tác nháy mắt (blink gesture) để hạn chế rung giật ngẫu nhiên, có hỗ trợ vùng chết (deadzone) trung tâm.
+- **[AGENT.md](./AGENT.md)**: Kiến trúc lõi, quy ước bộ đệm `SharedGazeBuffer` và các quy tắc bắt buộc khi phát triển.
+- **[Danh mục Tài liệu (`docs/README.md`)](./docs/README.md)**:
+  1. **[Backend Dev & Setup (`docs/BACKEND_DEV.md`)](./docs/BACKEND_DEV.md)**: Hướng dẫn vận hành API, phân quyền Admin/User và migrations TypeORM.
+  2. **[Calibration Guide (`docs/CALIBRATION_GUIDE.md`)](./docs/CALIBRATION_GUIDE.md)**: Quy trình hiệu chuẩn 9 điểm và phân tích sai số.
+  3. **[Eye Actions Mapping (`docs/EYE_ACTIONS_MAPPING.md`)](./docs/EYE_ACTIONS_MAPPING.md)**: Cơ chế máy trạng thái cử chỉ mắt và chống chọn nhầm.

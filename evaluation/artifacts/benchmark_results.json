@@ -1,5 +1,5 @@
 {
-  "timestamp": 1794415829,
+  "timestamp": 1794491242,
   "environment": {
     "python_version": "3.14.10 (main, Oct 26 2026, 00:00:00) [GCC 16.2.1 20260819 (Red Hat 16.2.1-2)]",
     "use_numpy": false
@@ -19,14 +19,14 @@
       "median_pixels": 68.77,
       "r2_score": 0.9592,
       "angular_error_deg": 2.05,
-      "solve_time_ms": 3.614
+      "solve_time_ms": 3.028
     },
     "new_18d_roll_invariant_huber": {
       "mae_pixels": 37.88,
       "median_pixels": 19.82,
       "r2_score": 0.9829,
       "angular_error_deg": 1.0,
-      "solve_time_ms": 64.68
+      "solve_time_ms": 68.498
     },
     "mae_reduction_percentage": 51.22
   }

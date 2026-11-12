@@ -92,10 +92,17 @@ apps/web/.local-calibration/
 docker-data/
 
 # ========================
+# Python / R&D
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.onnx
+
+# ========================
 # Misc
 # ========================
 *.pem
-
-.vscode/
-
 prompt.md

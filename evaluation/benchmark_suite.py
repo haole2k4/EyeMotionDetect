@@ -6,7 +6,7 @@ Compares:
   B) New 18D Roll-Invariant Anatomical Basis + Huber IRLS SVD + Implicit Drift Correction
 
 Self-contained with pure-Python fallback if numpy is not installed.
-Outputs summary table to console and saves report to evaluation/benchmark_results.json.
+Outputs summary table to console and saves report to evaluation/artifacts/benchmark_results.json.
 """
 
 import math
@@ -439,7 +439,9 @@ def main():
     }
     
     out_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(out_dir, "benchmark_results.json")
+    artifacts_dir = os.path.join(out_dir, "artifacts")
+    os.makedirs(artifacts_dir, exist_ok=True)
+    json_path = os.path.join(artifacts_dir, "benchmark_results.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
         
