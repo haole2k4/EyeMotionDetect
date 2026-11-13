@@ -59,7 +59,22 @@ let sharedBufferBridge: SharedGazeBuffer | null = null;
 
 const jsPolyMapper = new PolynomialGazeMapper();
 let currentPolyWeights: { coeffsX: number[]; coeffsY: number[] } | null = null;
+let cachedMagneticTargets: MagneticTargetSpec[] = [];
 let activeAccessibilityConfig: AccessibilityProfileConfig = { ...DEFAULT_ACCESSIBILITY_PROFILE };
+
+function applyMagneticTargets(engine: WasmGazeEngine, targets: MagneticTargetSpec[]): void {
+  engine.clearTargets();
+  for (const t of targets) {
+    engine.addTarget(
+      t.id,
+      t.x,
+      t.y,
+      t.width,
+      t.height,
+      (t.gravityRadius ?? 60.0) * activeAccessibilityConfig.magneticStrength
+    );
+  }
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -87,6 +102,9 @@ async function ensureWasmReady(): Promise<void> {
         wasmEngine = new WasmGazeEngine(exports, 1920, 1080);
         if (currentPolyWeights) {
           wasmEngine.importWeights(currentPolyWeights.coeffsX, currentPolyWeights.coeffsY);
+        }
+        if (cachedMagneticTargets.length > 0) {
+          applyMagneticTargets(wasmEngine, cachedMagneticTargets);
         }
       } catch (err) {
         console.warn('WasmGazeEngine initialization failed, falling back to TypeScript math', err);
@@ -185,22 +203,14 @@ const gazeWorker = {
   },
 
   setMagneticTargets(targets: MagneticTargetSpec[]) {
+    cachedMagneticTargets = [...targets];
     if (wasmEngine) {
-      wasmEngine.clearTargets();
-      for (const t of targets) {
-        wasmEngine.addTarget(
-          t.id,
-          t.x,
-          t.y,
-          t.width,
-          t.height,
-          (t.gravityRadius ?? 60.0) * activeAccessibilityConfig.magneticStrength
-        );
-      }
+      applyMagneticTargets(wasmEngine, cachedMagneticTargets);
     }
   },
 
   clearMagneticTargets() {
+    cachedMagneticTargets = [];
     if (wasmEngine) {
       wasmEngine.clearTargets();
     }
@@ -462,6 +472,7 @@ const gazeWorker = {
     faceLandmarkerInitPromise = null;
     wasmInitPromise = null;
     currentPolyWeights = null;
+    cachedMagneticTargets = [];
     sharedBufferBridge = null;
   },
 };

@@ -12,6 +12,7 @@ import {
 import { markGazeWeightsUpdated } from "../../lib/gaze/weights-sync";
 import { api } from "../../lib/api";
 import type { CalibrationSample, GazeFeatures } from "../../lib/gaze/types";
+import { useAuthStore } from "@/store/auth";
 import { useGaze } from "./GazeProvider";
 
 type Mode = "fallback" | "polynomial";
@@ -148,6 +149,8 @@ async function* createFeatureStream(
 
 export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPanelProps) {
   const { setModel, stats, getLatestFeatures, getEarThreshold } = useGaze();
+  const user = useAuthStore((state) => state.user);
+  const activeUserKey = user?.id || user?.email || undefined;
   const [isRunning, setIsRunning] = useState(false);
   const [currentRound, setCurrentRound] = useState(0);
   const [targetRounds, setTargetRounds] = useState(1);
@@ -159,10 +162,24 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
   const [isResetConfirming, setIsResetConfirming] = useState(false);
 
   const refreshStoredStats = useCallback(async () => {
-    const stored = await getCalibrationLocally();
+    const stored = await getCalibrationLocally(activeUserKey);
+    if (activeUserKey && stored?.sampleCount) {
+      try {
+        const res = await api.get<{ calibrationPoints?: number }>('/weights/me');
+        const serverPoints = res.data?.calibrationPoints ?? 0;
+        if (serverPoints === 0 || stored.sampleCount > serverPoints) {
+          await resetCalibrationLocally(activeUserKey);
+          setStoredSampleCount(0);
+          setStoredRounds(0);
+          return;
+        }
+      } catch {
+        // Ignore network/auth errors and fall back to local stats
+      }
+    }
     setStoredSampleCount(stored?.sampleCount ?? 0);
     setStoredRounds(stored?.rounds ?? 0);
-  }, []);
+  }, [activeUserKey]);
 
   useEffect(() => {
     void refreshStoredStats();
@@ -228,18 +245,45 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
         ...sample,
         viewportWidth: currentWidth,
         viewportHeight: currentHeight,
+        ...(activeUserKey ? { userId: activeUserKey } : {}),
       }));
 
       if (newSamples.length < totalPointsPerRound) {
         throw new Error("Không đủ dữ liệu calibration để train model");
       }
 
-      const previousSamples = await getCalibrationSamplesLocally();
-      const previousStored = await getCalibrationLocally();
+      const previousSamplesRaw = await getCalibrationSamplesLocally(activeUserKey);
+      const previousStored = await getCalibrationLocally(activeUserKey);
+
+      let serverCalibrationPoints: number | null = null;
+      if (activeUserKey) {
+        try {
+          const weightsRes = await api.get<{ calibrationPoints?: number }>('/weights/me');
+          serverCalibrationPoints = weightsRes.data?.calibrationPoints ?? 0;
+        } catch {
+          serverCalibrationPoints = null;
+        }
+      }
+
+      const matchingUserSamples = activeUserKey
+        ? previousSamplesRaw.filter((sample) => !sample.userId || sample.userId === activeUserKey)
+        : previousSamplesRaw;
+
+      const isStaleComparedToServer =
+        serverCalibrationPoints !== null &&
+        (serverCalibrationPoints === 0 || matchingUserSamples.length > serverCalibrationPoints);
+
+      const canMergePrevious =
+        !isStaleComparedToServer &&
+        matchingUserSamples.length > 0 &&
+        matchingUserSamples.length === previousSamplesRaw.length;
+
+      const previousSamples = canMergePrevious ? matchingUserSamples : [];
+      const previousRounds = canMergePrevious ? (previousStored?.rounds ?? 0) : 0;
 
       // Tự động gộp mẫu thông minh không dùng window.confirm
       let trainingSamples: CalibrationSample[] = [...previousSamples, ...newSamples];
-      const totalRounds = (previousStored?.rounds ?? 0) + round;
+      const totalRounds = previousRounds + round;
 
       if (trainingSamples.length > MAX_SAMPLES_FOR_TRAINING) {
         trainingSamples = trainingSamples.slice(
@@ -250,7 +294,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       trainingSamples = normalizeSamplesToViewport(trainingSamples, currentWidth, currentHeight);
 
       setMessage("Đang giải nghiệm 18D Huber Ridge SVD (< 2ms)...");
-      await saveCalibrationSamplesLocally(trainingSamples, totalRounds);
+      await saveCalibrationSamplesLocally(trainingSamples, totalRounds, activeUserKey);
 
       const polynomial = new PolynomialGazeMapper();
       const fitResult = polynomial.fit(trainingSamples);
@@ -289,6 +333,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       setIsRunning(false);
     }
   }, [
+    activeUserKey,
     cameraReady,
     getEarThreshold,
     getLatestFeatures,
@@ -304,7 +349,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     if (isRunning) return;
 
     await api.delete('/weights/me').catch(() => {});
-    await resetCalibrationLocally();
+    await resetCalibrationLocally(activeUserKey);
     await setModel("none");
     onModelApplied("fallback");
     setTrainingMae(null);
@@ -313,7 +358,7 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
     setIsResetConfirming(false);
     setMessage("Đã reset dữ liệu calibration. Hệ thống đang ở fallback mode.");
     await refreshStoredStats();
-  }, [isRunning, onModelApplied, refreshStoredStats, setModel]);
+  }, [activeUserKey, isRunning, onModelApplied, refreshStoredStats, setModel]);
 
   return (
     <div className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">

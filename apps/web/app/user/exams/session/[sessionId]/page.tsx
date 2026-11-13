@@ -215,12 +215,13 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         gazeHeatmap: telemetryPointsRef.current,
         faceLossPauseCount: faceLossCountRef.current,
       });
+      stopPipeline();
       router.push('/user/dashboard');
     } catch (error) {
       console.error(error);
       finishingRef.current = false;
     }
-  }, [router, sessionId]);
+  }, [router, sessionId, stopPipeline]);
 
   // Countdown timer with Auto-pause support
   useEffect(() => {
@@ -460,10 +461,10 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   const renderContent = () => {
     if (loading || !session) {
       return (
-        <div className="h-full w-full flex flex-col items-center justify-center bg-[#090d16] text-white">
-          <div className="h-14 w-14 animate-spin rounded-full border-4 border-cyan-400 border-t-transparent" />
-          <p className="mt-6 text-2xl font-bold tracking-widest text-cyan-200">
-            ĐANG CHUẨN BỊ PHÒNG THI TRỢ NĂNG...
+        <div className="h-full w-full flex flex-col items-center justify-center bg-[#080B11] text-slate-100">
+          <div className="h-12 w-12 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+          <p className="mt-5 text-lg font-semibold tracking-wider text-slate-300">
+            Đang chuẩn bị phòng thi trợ năng...
           </p>
         </div>
       );
@@ -482,6 +483,15 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
       D: currentQuestion.options[3] || '',
     };
 
+    const optionLetters = ['A', 'B', 'C', 'D'] as const;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const savedAnswer = (session?.answers || []).find((a: any) => a?.question?.id === currentQuestion.id);
+    const savedOptionIdx = savedAnswer
+      ? currentQuestion.options.indexOf(savedAnswer.selectedOption)
+      : -1;
+    const currentSelectedAnswer =
+      savedOptionIdx >= 0 && savedOptionIdx < 4 ? optionLetters[savedOptionIdx] : null;
+
     const isSingleFaceReady = stats?.singleFaceReady ?? false;
     const isHeadPoseOk = stats?.headPoseOk ?? true;
     const lightingScore = stats?.lightingScore;
@@ -489,25 +499,25 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
     return (
       <>
         {/* Top Ergonomic HUD Bar */}
-        <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-3 bg-[#090d16]/90 border-b border-slate-800 backdrop-blur-md">
+        <header className="shrink-0 z-50 flex items-center justify-between px-4 md:px-6 py-2.5 bg-[#0B0F17] border-b border-slate-800/80">
           {/* Left: Exam title & Progress status */}
-          <div className="flex items-center gap-4">
-            <span className="rounded-xl bg-blue-950/80 border border-blue-500/40 px-3 py-1 text-sm font-extrabold text-blue-300">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="shrink-0 rounded-lg bg-slate-900 border border-slate-700/80 px-2.5 py-1 text-xs md:text-sm font-bold text-sky-300 tabular-nums">
               CÂU {currentIndex + 1} / {questions.length}
             </span>
-            <span className="hidden md:inline text-sm font-bold text-slate-300 truncate max-w-xs">
+            <span className="hidden md:inline text-sm font-medium text-slate-300 truncate max-w-xs">
               {session?.exam?.title}
             </span>
           </div>
 
           {/* Center: Head Pose, Face & Lighting Indicators */}
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-2.5">
             {/* Face Status Badge */}
             <div
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border transition-colors ${
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border transition-colors ${
                 isSingleFaceReady
-                  ? 'border-emerald-500/40 bg-emerald-950/60 text-emerald-300'
-                  : 'border-rose-500/50 bg-rose-950/80 text-rose-300 animate-pulse'
+                  ? 'border-emerald-500/30 bg-emerald-950/40 text-emerald-300'
+                  : 'border-rose-500/50 bg-rose-950/60 text-rose-300 animate-pulse'
               }`}
             >
               <Eye className="w-3.5 h-3.5" />
@@ -516,10 +526,10 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
 
             {/* Head Pose Badge */}
             <div
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border ${
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
                 isHeadPoseOk
-                  ? 'border-cyan-500/40 bg-cyan-950/60 text-cyan-300'
-                  : 'border-amber-500/40 bg-amber-950/60 text-amber-300'
+                  ? 'border-sky-500/30 bg-sky-950/40 text-sky-300'
+                  : 'border-amber-500/40 bg-amber-950/50 text-amber-300'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -528,36 +538,36 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
 
             {/* Lighting Badge */}
             {lightingScore !== undefined && (
-              <div className="rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-xs font-bold text-slate-300">
+              <div className="rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-slate-400 tabular-nums">
                 Sáng: {Math.round(lightingScore * 100)}%
               </div>
             )}
           </div>
 
           {/* Right: TTS Toggle Button & Countdown Timer */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 shrink-0">
             {/* TTS Toggle */}
             <button
               type="button"
               onClick={toggleTts}
               aria-label={ttsEnabled ? 'Tắt đọc đề' : 'Bật đọc đề'}
-              className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all ${
+              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 ttsEnabled
-                  ? 'border-cyan-400 bg-cyan-950/80 text-cyan-200 shadow-[0_0_15px_rgba(34,211,238,0.3)]'
-                  : 'border-slate-700 bg-slate-800 text-slate-400'
+                  ? 'border-sky-500/50 bg-sky-950/50 text-sky-200'
+                  : 'border-slate-700/80 bg-slate-900 text-slate-400 hover:text-slate-200'
               }`}
             >
-              {ttsEnabled ? <Volume2 className="w-4 h-4 text-cyan-300" /> : <VolumeX className="w-4 h-4" />}
+              {ttsEnabled ? <Volume2 className="w-4 h-4 text-sky-400" /> : <VolumeX className="w-4 h-4" />}
               <span className="hidden sm:inline">{ttsEnabled ? 'Đọc đề: BẬT' : 'Đọc đề: TẮT'}</span>
             </button>
 
             {/* Countdown Timer */}
             {remainingSeconds !== null && (
               <div
-                className={`flex items-center gap-2 rounded-xl border px-3.5 py-1.5 font-mono text-sm md:text-base font-black ${
+                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 font-mono text-sm font-bold tabular-nums ${
                   remainingSeconds < 300
-                    ? 'border-rose-500 bg-rose-950/80 text-rose-300 animate-pulse'
-                    : 'border-slate-700 bg-slate-900 text-slate-100'
+                    ? 'border-rose-500/70 bg-rose-950/60 text-rose-300 animate-pulse'
+                    : 'border-slate-700/80 bg-slate-900 text-slate-100'
                 }`}
               >
                 <Clock className="w-4 h-4 text-slate-400" />
@@ -568,19 +578,19 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         </header>
 
         {/* Top Progress Track */}
-        <div className="absolute top-[53px] left-0 z-40 flex w-full justify-center gap-1.5 px-4 bg-[#090d16]/80 py-1">
+        <div className="shrink-0 z-40 flex w-full justify-center gap-1.5 px-4 md:px-6 py-1.5 bg-[#080B11] border-b border-slate-800/50">
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           {questions.map((q: any, i: number) => {
             const isAnswered = answeredQuestionIds.has(q.id);
             const isCurrent = i === currentIndex;
-            let barStyle = 'bg-slate-800/80';
-            if (isCurrent) barStyle = 'bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)] scale-y-125';
-            else if (isAnswered) barStyle = 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]';
+            let barStyle = 'bg-slate-800';
+            if (isCurrent) barStyle = 'bg-sky-400';
+            else if (isAnswered) barStyle = 'bg-emerald-500/80';
 
             return (
               <div
                 key={i}
-                className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${barStyle}`}
+                className={`h-1 flex-1 rounded-full transition-colors duration-200 ${barStyle}`}
               />
             );
           })}
@@ -588,16 +598,16 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
 
         {/* Auto-Pause Warning Banner on Face Loss */}
         {isPaused && (
-          <div className="absolute inset-x-6 top-20 z-50 rounded-2xl border-2 border-rose-500 bg-rose-950/95 p-5 shadow-[0_0_40px_rgba(244,63,94,0.6)] backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="absolute inset-x-6 top-20 z-50 rounded-2xl border border-rose-500/70 bg-[#180C12]/95 p-5 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-lg">
-                <AlertTriangle className="h-6 w-6" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-600/90 text-white">
+                <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-black text-rose-100 uppercase tracking-wide">
-                  ⏸ Đã tạm dừng tính giờ bài thi (Lần {faceLossPauseCount})
+                <h3 className="text-base font-bold text-rose-100 uppercase tracking-wide">
+                  Đã tạm dừng tính giờ bài thi (Lần {faceLossPauseCount})
                 </h3>
-                <p className="text-sm font-semibold text-rose-200">
+                <p className="text-sm font-medium text-rose-200/90">
                   Không nhận diện được khuôn mặt của bạn liên tục quá 1.5 giây. Vui lòng ngồi thẳng vào vùng trung tâm camera để tiếp tục làm bài.
                 </p>
               </div>
@@ -606,22 +616,23 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         )}
 
         {/* Content MCQ Board */}
-        <div className="h-full w-full pt-16">
+        <main className="relative flex-1 min-h-0 w-full overflow-hidden">
           <MCQBoard
             question={currentQuestion.content}
             options={optionsObj}
+            selectedAnswer={currentSelectedAnswer}
             onAnswerSelected={handleAnswer}
             onPrev={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
             onNext={() => setCurrentIndex((prev) => Math.min(prev + 1, questions.length - 1))}
             onSubmit={handleFinish}
           />
-        </div>
+        </main>
       </>
     );
   };
 
   return (
-    <div className="fixed inset-0 z-[100] h-screen w-screen overflow-hidden bg-[#090d16]">
+    <div className="fixed inset-0 z-[100] h-dvh w-screen overflow-hidden flex flex-col bg-[#080B11]">
       {/* Hidden Video Feed for Gaze Tracking */}
       <video
         ref={videoRef}

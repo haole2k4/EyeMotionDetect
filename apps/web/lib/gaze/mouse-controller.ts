@@ -26,6 +26,8 @@ export class WebCursorController {
         z-index: 99999;
         will-change: transform;
         transition: transform 0.04s cubic-bezier(0, 0, 0.2, 1), opacity 0.15s ease-out;
+        opacity: 0;
+        visibility: hidden;
         transform: translate3d(-100px, -100px, 0);
       `;
       document.body.appendChild(this.cursorEl);
@@ -35,6 +37,8 @@ export class WebCursorController {
   moveTo(x: number, y: number, isSnapped = false): void {
     if (this.cursorEl) {
       const scale = isSnapped ? 1.25 : 1.0;
+      this.cursorEl.style.opacity = '1';
+      this.cursorEl.style.visibility = 'visible';
       this.cursorEl.style.transform = `translate3d(${x - 18}px, ${y - 18}px, 0) scale(${scale})`;
       if (isSnapped) {
         this.cursorEl.style.borderColor = 'rgba(234, 179, 8, 0.95)';
@@ -56,6 +60,14 @@ export class WebCursorController {
             'radial-gradient(circle, rgba(56, 189, 248, 0.55) 0%, rgba(56, 189, 248, 0.15) 60%, transparent 100%)';
         }
       }, 140);
+    }
+  }
+
+  hide(): void {
+    if (this.cursorEl) {
+      this.cursorEl.style.opacity = '0';
+      this.cursorEl.style.visibility = 'hidden';
+      this.cursorEl.style.transform = 'translate3d(-100px, -100px, 0)';
     }
   }
 

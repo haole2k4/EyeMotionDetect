@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { GAZE_WEIGHTS_UPDATED_EVENT } from '@/lib/gaze/weights-sync';
+import { useAuthStore } from '@/store/auth';
 import {
   Card,
   CardContent,
@@ -16,9 +17,11 @@ import { Button } from '@/components/ui/button';
 
 export default function CalibrationPage() {
   const router = useRouter();
+  const user = useAuthStore((state) => state.user);
+  const userKey = user?.id ?? user?.email ?? 'anon';
   
   const { data: weights, refetch } = useQuery({
-    queryKey: ['calibration-weights-me'],
+    queryKey: ['calibration-weights-me', userKey],
     queryFn: async () => {
       const res = await api.get('/weights/me');
       return res.data as {

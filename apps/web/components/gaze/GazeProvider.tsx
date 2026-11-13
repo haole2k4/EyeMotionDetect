@@ -23,11 +23,56 @@ import {
 
 export type RegionId = 'A' | 'B' | 'C' | 'D' | 'DEADZONE' | 'PREV' | 'NEXT' | 'SUBMIT' | 'SAFE_MARGIN';
 
-const DEFAULT_DWELL_REQUIREMENT_MS = 3000;
+const DEFAULT_DWELL_REQUIREMENT_MS = 2000;
 const SUBMIT_DWELL_REQUIREMENT_MS = 4000;
+const FALLBACK_HIT_MARGIN_PX = 24;
 const STATS_PUBLISH_INTERVAL_MS = 66;
 const DWELL_CLICK_COOLDOWN_MS = 250;
 const PIPELINE_INIT_DELAY_MS = 400;
+
+function findFallbackTarget(
+  x: number,
+  y: number,
+  targets: MagneticTargetSpec[]
+): MagneticTargetSpec | null {
+  let bestTarget: MagneticTargetSpec | null = null;
+  let bestEdgeDist = Infinity;
+  let bestCenterDist = Infinity;
+
+  for (const t of targets) {
+    const dx = x < t.x ? t.x - x : x > t.x + t.width ? x - (t.x + t.width) : 0;
+    const dy = y < t.y ? t.y - y : y > t.y + t.height ? y - (t.y + t.height) : 0;
+    const edgeDist = Math.hypot(dx, dy);
+
+    if (edgeDist <= FALLBACK_HIT_MARGIN_PX) {
+      const centerDist = Math.hypot(x - (t.x + t.width / 2), y - (t.y + t.height / 2));
+      if (
+        edgeDist < bestEdgeDist ||
+        (edgeDist === bestEdgeDist && centerDist < bestCenterDist)
+      ) {
+        bestTarget = t;
+        bestEdgeDist = edgeDist;
+        bestCenterDist = centerDist;
+      }
+    }
+  }
+
+  return bestTarget;
+}
+
+function resolveTargetClickPoint(
+  x: number,
+  y: number,
+  targetId: number,
+  targets: MagneticTargetSpec[]
+): [number, number] {
+  if (targetId < 0) return [x, y];
+  const t = targets.find((item) => item.id === targetId);
+  if (t && (x < t.x || x > t.x + t.width || y < t.y || y > t.y + t.height)) {
+    return [t.x + t.width / 2, t.y + t.height / 2];
+  }
+  return [x, y];
+}
 
 export interface DebugStats {
   fps: number;
@@ -86,6 +131,7 @@ export interface GazeContextType {
   clearMagneticTargets?: () => void;
   recordImplicitDrift?: (targetX: number, targetY: number) => void;
   setPursuitOrbitTarget?: (target: { x: number; y: number; radius?: number } | null) => void;
+  resetDwell?: (cooldownMs?: number) => void;
   accessibilityProfile?: AccessibilityProfileConfig;
   setAccessibilityProfile?: (profile: Partial<AccessibilityProfileConfig>) => void;
 }
@@ -166,6 +212,12 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const isSnappedRef = useRef<boolean>(false);
   const activeTargetIdRef = useRef<number>(-1);
   const targetMapRef = useRef<Map<number, string>>(new Map());
+  const registeredTargetsRef = useRef<MagneticTargetSpec[]>([]);
+  const accessibilityProfileRef = useRef<AccessibilityProfileConfig>(DEFAULT_ACCESSIBILITY_PROFILE);
+
+  useEffect(() => {
+    accessibilityProfileRef.current = accessibilityProfile;
+  }, [accessibilityProfile]);
 
   const latestUnifiedResultRef = useRef<UnifiedFrameResult | null>(null);
   const latestFeaturesRef = useRef<GazeFeatures | null>(null);
@@ -178,6 +230,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const regionRef = useRef<RegionId>('DEADZONE');
   const dwellStartRef = useRef<number | null>(null);
   const currentDwellProgressRef = useRef<number>(0);
+  const dwellCooldownUntilRef = useRef<number>(0);
   const lastStatsPublishRef = useRef<number>(0);
   const lastDwellClickAtRef = useRef<number>(0);
 
@@ -262,6 +315,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const setAccessibilityProfile = useCallback((profile: Partial<AccessibilityProfileConfig>) => {
     setAccessibilityProfileState((prev) => {
       const next = { ...prev, ...profile };
+      accessibilityProfileRef.current = next;
       if (workerRef.current) {
         void workerRef.current.setAccessibilityConfig(next);
       }
@@ -270,6 +324,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const registerMagneticTargets = useCallback((targets: MagneticTargetSpec[]) => {
+    registeredTargetsRef.current = [...targets];
     const map = new Map<number, string>();
     for (const t of targets) {
       map.set(t.id, t.key);
@@ -281,6 +336,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearMagneticTargets = useCallback(() => {
+    registeredTargetsRef.current = [];
     targetMapRef.current.clear();
     if (workerRef.current) {
       void workerRef.current.clearMagneticTargets();
@@ -302,6 +358,12 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
         void workerRef.current.setPursuitTarget(-9999, -9999, 0, 1200.0);
       }
     }
+  }, []);
+
+  const resetDwell = useCallback((cooldownMs = 0) => {
+    dwellStartRef.current = null;
+    currentDwellProgressRef.current = 0;
+    dwellCooldownUntilRef.current = cooldownMs > 0 ? performance.now() + cooldownMs : 0;
   }, []);
 
   // VÒNG LẶP 1: Inference loop (~30 FPS, bảo vệ Zero-Jank bằng isProcessingFrameRef)
@@ -359,7 +421,13 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
         activeTargetIdRef.current = unifiedResult.activeTargetId;
 
         if (unifiedResult.blinkEvent !== 'none') {
-          handleBlinkAction(unifiedResult.blinkEvent, targetCoord[0], targetCoord[1]);
+          const [blinkX, blinkY] = resolveTargetClickPoint(
+            targetCoord[0],
+            targetCoord[1],
+            unifiedResult.activeTargetId,
+            registeredTargetsRef.current
+          );
+          handleBlinkAction(unifiedResult.blinkEvent, blinkX, blinkY);
         }
       }
     } catch {
@@ -380,12 +448,15 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     let targetX = targetGazeRef.current[0];
     let targetY = targetGazeRef.current[1];
     let snapped = isSnappedRef.current;
+    let activeTargetId = activeTargetIdRef.current;
 
     // Zero-copy SharedBuffer path
     if (sharedBufferRef.current && sharedBufferRef.current.isShared) {
       const snap = sharedBufferRef.current.readSnapshot();
       if (snap.isValid) {
         snapped = snap.activeTargetId >= 0;
+        activeTargetId = snap.activeTargetId;
+        activeTargetIdRef.current = snap.activeTargetId;
         targetX = snapped ? snap.snappedX : snap.smoothX || snap.filteredX || snap.rawX;
         targetY = snapped ? snap.snappedY : snap.smoothY || snap.filteredY || snap.rawY;
       }
@@ -393,15 +464,35 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
     const [cursorX, cursorY] = springRef.current.update(targetX, targetY, dtSec);
 
+    let fallbackKey: string | null = null;
+    if (activeTargetId < 0 && registeredTargetsRef.current.length > 0) {
+      const matched = findFallbackTarget(cursorX, cursorY, registeredTargetsRef.current);
+      if (matched) {
+        activeTargetId = matched.id;
+        snapped = true;
+        fallbackKey = matched.key;
+      }
+    }
+
     if (mouseControllerRef.current) {
       mouseControllerRef.current.moveTo(cursorX, cursorY, snapped);
     }
 
-    // Grid Region & Dwell click
+    // Prioritize magnetic target key over fallback grid cell so dwell sweep matches snapped target
+    const activeKey =
+      activeTargetId >= 0
+        ? targetMapRef.current.get(activeTargetId) ?? fallbackKey ?? null
+        : null;
+    const normalizedActiveKey = activeKey === 'SUBMIT_PURSUIT' ? 'SUBMIT' : activeKey;
+
     const w = window.innerWidth;
     const h = window.innerHeight;
     const { row, col } = getGridCell(cursorX, cursorY, w, h);
-    const mappedRegion = getActionFromGrid(row, col) as RegionId;
+    const gridRegion = getActionFromGrid(row, col) as RegionId;
+    const mappedRegion: RegionId =
+      targetMapRef.current.size > 0
+        ? (normalizedActiveKey as RegionId | null) ?? 'DEADZONE'
+        : (normalizedActiveKey as RegionId | null) ?? gridRegion;
 
     const newRegion: RegionId =
       interactionModeRef.current === 'confirm'
@@ -410,7 +501,8 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
           : 'DEADZONE'
         : mappedRegion;
 
-    let currentDwellRequirement = DEFAULT_DWELL_REQUIREMENT_MS;
+    let currentDwellRequirement =
+      accessibilityProfileRef.current.dwellTimeMs || DEFAULT_DWELL_REQUIREMENT_MS;
     if (newRegion === 'SUBMIT') currentDwellRequirement = SUBMIT_DWELL_REQUIREMENT_MS;
 
     const isSafeZone =
@@ -418,23 +510,37 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
         ? newRegion === 'DEADZONE'
         : newRegion === 'DEADZONE' || newRegion === 'SAFE_MARGIN';
 
-    if (newRegion !== regionRef.current) {
+    if (now < dwellCooldownUntilRef.current) {
+      regionRef.current = newRegion;
+      dwellStartRef.current = null;
+      currentDwellProgressRef.current = 0;
+    } else if (newRegion !== regionRef.current) {
       regionRef.current = newRegion;
       dwellStartRef.current = isSafeZone ? null : now;
       currentDwellProgressRef.current = 0;
-    } else if (!isSafeZone && dwellStartRef.current) {
+    } else if (!isSafeZone) {
+      if (!dwellStartRef.current) {
+        dwellStartRef.current = now;
+      }
       const elapsedDwell = now - dwellStartRef.current;
       currentDwellProgressRef.current = Math.min(elapsedDwell / currentDwellRequirement, 1.0);
       if (currentDwellProgressRef.current >= 1.0) {
         if (now - lastDwellClickAtRef.current >= DWELL_CLICK_COOLDOWN_MS) {
-          dispatchMouseEvent('click', cursorX, cursorY);
+          const [clickX, clickY] = resolveTargetClickPoint(
+            cursorX,
+            cursorY,
+            activeTargetId,
+            registeredTargetsRef.current
+          );
+          dispatchMouseEvent('click', clickX, clickY);
           if (mouseControllerRef.current) {
             mouseControllerRef.current.flashClickEffect();
           }
           lastDwellClickAtRef.current = now;
         }
-        dwellStartRef.current = now;
+        dwellStartRef.current = null;
         currentDwellProgressRef.current = 0;
+        dwellCooldownUntilRef.current = now + 1400;
       }
     }
 
@@ -450,10 +556,6 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     // Throttle publish stats to React state
     if (now - lastStatsPublishRef.current >= STATS_PUBLISH_INTERVAL_MS) {
       const unified = latestUnifiedResultRef.current;
-      const activeKey =
-        activeTargetIdRef.current >= 0
-          ? targetMapRef.current.get(activeTargetIdRef.current) ?? null
-          : null;
 
       setStats({
         fps: fpsRef.current,
@@ -495,6 +597,12 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       cancelAnimationFrame(renderRafRef.current);
       renderRafRef.current = 0;
     }
+    mouseControllerRef.current?.hide();
+    regionRef.current = 'DEADZONE';
+    dwellStartRef.current = null;
+    currentDwellProgressRef.current = 0;
+    dwellCooldownUntilRef.current = 0;
+    activeTargetIdRef.current = -1;
   }, []);
 
   const startPipeline = useCallback((videoElement: HTMLVideoElement) => {
@@ -511,6 +619,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     lastRenderTimeRef.current = performance.now();
     lastStatsPublishRef.current = 0;
     lastDwellClickAtRef.current = 0;
+    dwellCooldownUntilRef.current = 0;
 
     inferenceRafRef.current = requestAnimationFrame(runInferenceLoop);
     renderRafRef.current = requestAnimationFrame(runRenderCursorLoop);
@@ -600,6 +709,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
         clearMagneticTargets,
         recordImplicitDrift,
         setPursuitOrbitTarget,
+        resetDwell,
         accessibilityProfile,
         setAccessibilityProfile,
       }}

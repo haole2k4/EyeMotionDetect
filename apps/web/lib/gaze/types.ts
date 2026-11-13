@@ -5,6 +5,7 @@ export interface CalibrationSample {
   timestamp: number;
   viewportWidth?: number;
   viewportHeight?: number;
+  userId?: string;
 }
 
 export interface GazeFeatures {

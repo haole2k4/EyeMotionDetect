@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -18,13 +19,18 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
   const logout = useAuthStore((state) => state.logout);
 
   const user = useAuthStore((state) => state.user);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <GazeProvider>
       <div className="flex h-screen overflow-hidden bg-background text-foreground">
         <aside className="flex h-full w-64 flex-col border-r bg-card px-4 py-8">
-          <h1 className="mb-2 px-2 text-2xl font-bold">{user?.username || 'Học Viên'}</h1>
-          <p className="mb-8 px-2 text-sm text-muted-foreground">{user?.email || ''}</p>
+          <h1 className="mb-2 px-2 text-2xl font-bold">{mounted ? user?.username || 'Học Viên' : 'Học Viên'}</h1>
+          <p className="mb-8 px-2 text-sm text-muted-foreground">{mounted ? user?.email || '' : ''}</p>
           <nav className="flex-1 space-y-2">
             {menuItems.map((item) => {
               const isActive = pathname.startsWith(item.href);

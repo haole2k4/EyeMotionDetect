@@ -30,13 +30,13 @@ export function getGridCell(
 
 /**
  * Bản đồ Action rập theo layout:
- * [A,      Prev,     B]
- * [Submit, Deadzone, Flag]
- * [C,      Next,     D]
+ * [A,    SafeMargin, B   ]
+ * [Prev, Deadzone,   Next]
+ * [C,    Submit,     D   ]
  */
 const ACTION_LAYOUT = [
-  ['A', 'PREV', 'B'],
-  ['SAFE_MARGIN', 'DEADZONE', 'NEXT'],
+  ['A', 'SAFE_MARGIN', 'B'],
+  ['PREV', 'DEADZONE', 'NEXT'],
   ['C', 'SUBMIT', 'D']
 ] as const;
 
