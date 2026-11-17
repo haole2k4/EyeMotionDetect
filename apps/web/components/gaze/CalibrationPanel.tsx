@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { CalibrationSession } from "../../lib/gaze/calibration";
 import { PolynomialGazeMapper } from "../../lib/gaze/polynomial";
 import {
@@ -194,10 +195,12 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
   const runCalibration = useCallback(async () => {
     if (!cameraReady) {
       setMessage("Cần bật camera trước khi calibration");
+      toast.error("Cần bật camera trước khi calibration");
       return;
     }
     if (!stats?.singleFaceReady) {
       setMessage("Calibration yêu cầu duy nhất 1 khuôn mặt trong khung hình");
+      toast.error("Calibration yêu cầu duy nhất 1 khuôn mặt trong khung hình");
       return;
     }
 
@@ -323,11 +326,16 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
       setMessage(
         `Hiệu chuẩn thành công! MAE 2D: ${fitResult.mae2D.toFixed(1)}px (${trainingSamples.length} mẫu, ${totalRounds} vòng)`
       );
+      toast.success(
+        `Hiệu chuẩn thành công · MAE 2D: ${fitResult.mae2D.toFixed(1)}px`
+      );
     } catch (error) {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       const msg = err?.response?.data?.message || err?.message || "Calibration thất bại";
+      const errText = typeof msg === "string" ? msg : JSON.stringify(msg);
       console.error("[Calibration Error]", error);
-      setMessage(`Lỗi: ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
+      setMessage(`Lỗi: ${errText}`);
+      toast.error(`Hiệu chuẩn thất bại: ${errText}`);
     } finally {
       setCurrentPoint(null);
       setIsRunning(false);
@@ -348,44 +356,50 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
   const resetCalibration = useCallback(async () => {
     if (isRunning) return;
 
-    await api.delete('/weights/me').catch(() => {});
-    await resetCalibrationLocally(activeUserKey);
-    await setModel("none");
-    onModelApplied("fallback");
-    setTrainingMae(null);
-    setCurrentRound(0);
-    setCurrentPoint(null);
-    setIsResetConfirming(false);
-    setMessage("Đã reset dữ liệu calibration. Hệ thống đang ở fallback mode.");
-    await refreshStoredStats();
+    try {
+      await api.delete('/weights/me').catch(() => {});
+      await resetCalibrationLocally(activeUserKey);
+      await setModel("none");
+      onModelApplied("fallback");
+      setTrainingMae(null);
+      setCurrentRound(0);
+      setCurrentPoint(null);
+      setIsResetConfirming(false);
+      setMessage("Đã reset dữ liệu calibration. Hệ thống đang ở fallback mode.");
+      toast.success("Đã đặt lại dữ liệu hiệu chuẩn");
+      await refreshStoredStats();
+    } catch (error) {
+      console.error("[Reset Calibration Error]", error);
+      toast.error("Không thể đặt lại dữ liệu hiệu chuẩn");
+    }
   }, [activeUserKey, isRunning, onModelApplied, refreshStoredStats, setModel]);
 
   return (
-    <div className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-      <p className="text-sm text-neutral-300">
+    <div className="space-y-4 rounded-2xl border-2 border-[#D4D4D8] bg-white p-5 md:p-6 text-[#0A0A0A]">
+      <p className="text-sm font-medium text-[#3F3F46]">
         Hiệu chỉnh 18D Huber Ridge SVD theo giải phẫu mắt và tư thế đầu của bạn.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => void runCalibration()}
           disabled={isRunning || !cameraReady}
-          className="rounded-md bg-cyan-400 px-4 py-2 font-medium text-black transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-11 rounded-lg bg-[#0052FF] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0040CC] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isRunning ? `Đang chạy vòng ${currentRound}/${targetRounds}...` : "Bắt đầu Calibration"}
         </button>
 
         {!isRunning && (
-          <div className="flex items-center gap-1.5 text-xs text-neutral-300">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-[#3F3F46]">
             <span>Số vòng:</span>
             {[1, 2, 3].map((r) => (
               <button
                 key={r}
                 type="button"
                 onClick={() => setTargetRounds(r)}
-                className={`rounded px-2 py-1 text-xs font-semibold ${
+                className={`min-h-9 min-w-9 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                   targetRounds === r
-                    ? "bg-cyan-500 text-black"
-                    : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                    ? "bg-[#0A0A0A] text-white"
+                    : "border border-[#D4D4D8] bg-[#F4F4F5] text-[#0A0A0A] hover:bg-[#E4E4E7]"
                 }`}
               >
                 {r}
@@ -398,53 +412,57 @@ export function CalibrationPanel({ cameraReady, onModelApplied }: CalibrationPan
           <button
             onClick={() => setIsResetConfirming(true)}
             disabled={isRunning}
-            className="rounded-md border border-red-500/60 bg-red-900/30 px-3 py-2 text-xs font-medium text-red-200 transition hover:bg-red-800/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-11 rounded-lg border-2 border-[#DC2626] bg-white px-4 py-2 text-xs font-semibold text-[#DC2626] transition-colors hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Reset Data
           </button>
         ) : (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => void resetCalibration()}
-              className="rounded-md bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-500"
+              className="min-h-11 rounded-lg bg-[#DC2626] px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#B91C1C]"
             >
               Xác nhận xóa
             </button>
             <button
               onClick={() => setIsResetConfirming(false)}
-              className="rounded-md border border-neutral-700 px-2.5 py-2 text-xs text-neutral-300 hover:bg-neutral-800"
+              className="min-h-11 rounded-lg border border-[#D4D4D8] bg-white px-3.5 py-2 text-xs font-semibold text-[#0A0A0A] transition-colors hover:bg-[#F4F4F5]"
             >
               Hủy
             </button>
           </div>
         )}
 
-        <span className="text-xs text-neutral-400">Mỗi vòng: {totalPointsPerRound} điểm</span>
-        <span className="text-xs text-neutral-400">
+        <span className="text-xs font-medium text-[#52525B] tabular-nums">
+          Mỗi vòng: {totalPointsPerRound} điểm
+        </span>
+        <span className="text-xs font-medium text-[#52525B] tabular-nums">
           Đã lưu: {storedSampleCount} mẫu / {storedRounds} vòng
         </span>
         {trainingMae !== null && (
-          <span className="text-xs text-emerald-300">
+          <span className="rounded-md border border-[#16A34A] bg-[#F0FDF4] px-2.5 py-1 text-xs font-semibold text-[#14532D] tabular-nums">
             Huber MAE 2D: {trainingMae.toFixed(1)} px
           </span>
         )}
       </div>
 
-      <p className="text-sm text-neutral-200">{message}</p>
+      <p className="text-sm font-medium text-[#0A0A0A]">{message}</p>
 
       {isRunning && (
-        <p className="text-xs text-amber-300">
+        <p className="text-xs font-semibold text-[#0052FF]">
           Đang chạy vòng {currentRound}/{targetRounds}. Giữ mắt nhìn tập trung vào hồng tâm đang hiển thị.
         </p>
       )}
 
       {overlayPoint && (
-        <div className="pointer-events-none fixed inset-0 z-[99990]">
+        <div className="pointer-events-none fixed inset-0 z-[99990] bg-[#F7F7F5]/95">
           <div
-            className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-cyan-400/90 shadow-[0_0_24px_rgba(34,211,238,0.9)] animate-pulse"
+            className="absolute flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-[#0A0A0A] bg-[#0052FF]"
             style={{ left: `${overlayPoint.x * 100}%`, top: `${overlayPoint.y * 100}%` }}
-          />
-          <div className="absolute left-1/2 top-6 -translate-x-1/2 rounded-md bg-black/80 px-3.5 py-2 text-xs font-medium text-white shadow-lg">
+          >
+            <span className="h-3 w-3 rounded-full bg-white" />
+          </div>
+          <div className="absolute left-1/2 top-6 -translate-x-1/2 rounded-lg bg-[#0A0A0A] px-4 py-2 text-xs font-semibold text-white">
             Giữ mắt vào điểm tròn, hạn chế chớp mắt
           </div>
         </div>

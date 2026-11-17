@@ -6,6 +6,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -23,10 +24,10 @@ import {
 
 export type RegionId = 'A' | 'B' | 'C' | 'D' | 'DEADZONE' | 'PREV' | 'NEXT' | 'SUBMIT' | 'SAFE_MARGIN';
 
-const DEFAULT_DWELL_REQUIREMENT_MS = 2000;
+const DEFAULT_DWELL_REQUIREMENT_MS = 1600;
 const SUBMIT_DWELL_REQUIREMENT_MS = 4000;
 const FALLBACK_HIT_MARGIN_PX = 24;
-const STATS_PUBLISH_INTERVAL_MS = 66;
+const STATS_PUBLISH_INTERVAL_MS = 33;
 const DWELL_CLICK_COOLDOWN_MS = 250;
 const PIPELINE_INIT_DELAY_MS = 400;
 
@@ -185,6 +186,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const [stats, setStats] = useState<DebugStats | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isEngineReady, setIsEngineReady] = useState(false);
+  const [isPipelineActive, setIsPipelineActive] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [accessibilityProfile, setAccessibilityProfileState] = useState<AccessibilityProfileConfig>(
     DEFAULT_ACCESSIBILITY_PROFILE
@@ -196,6 +198,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   const mountedRef = useRef(true);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const engineReadyRef = useRef(false);
+  const isPipelineActiveRef = useRef(false);
 
   const earDetectorRef = useRef(new AdaptiveEARDetector());
   const springRef = useRef(new SpringInterpolator2D());
@@ -321,26 +324,6 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
       }
       return next;
     });
-  }, []);
-
-  const registerMagneticTargets = useCallback((targets: MagneticTargetSpec[]) => {
-    registeredTargetsRef.current = [...targets];
-    const map = new Map<number, string>();
-    for (const t of targets) {
-      map.set(t.id, t.key);
-    }
-    targetMapRef.current = map;
-    if (workerRef.current) {
-      void workerRef.current.setMagneticTargets(targets);
-    }
-  }, []);
-
-  const clearMagneticTargets = useCallback(() => {
-    registeredTargetsRef.current = [];
-    targetMapRef.current.clear();
-    if (workerRef.current) {
-      void workerRef.current.clearMagneticTargets();
-    }
   }, []);
 
   const recordImplicitDrift = useCallback((targetX: number, targetY: number) => {
@@ -496,13 +479,19 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
     const newRegion: RegionId =
       interactionModeRef.current === 'confirm'
-        ? mappedRegion === 'SAFE_MARGIN' || mappedRegion === 'NEXT' || mappedRegion === 'DEADZONE'
+        ? mappedRegion === 'SAFE_MARGIN' ||
+          mappedRegion === 'NEXT' ||
+          mappedRegion === 'SUBMIT' ||
+          mappedRegion === 'DEADZONE'
           ? mappedRegion
           : 'DEADZONE'
         : mappedRegion;
 
+    const profileDwellMs = accessibilityProfileRef.current.dwellTimeMs;
     let currentDwellRequirement =
-      accessibilityProfileRef.current.dwellTimeMs || DEFAULT_DWELL_REQUIREMENT_MS;
+      typeof profileDwellMs === 'number' && profileDwellMs > 0
+        ? profileDwellMs
+        : DEFAULT_DWELL_REQUIREMENT_MS;
     if (newRegion === 'SUBMIT') currentDwellRequirement = SUBMIT_DWELL_REQUIREMENT_MS;
 
     const isSafeZone =
@@ -588,7 +577,63 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     renderRafRef.current = requestAnimationFrame(runRenderCursorLoop);
   }, [dispatchMouseEvent]);
 
+  const ensureRenderLoopRunning = useCallback(() => {
+    if (renderRafRef.current) return;
+    const w = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const h = typeof window !== 'undefined' ? window.innerHeight : 0;
+    if (
+      !isPipelineActiveRef.current &&
+      targetGazeRef.current[0] === 0 &&
+      targetGazeRef.current[1] === 0 &&
+      w > 0 &&
+      h > 0
+    ) {
+      targetGazeRef.current = [w / 2, h / 2];
+      springRef.current.reset(w / 2, h / 2);
+    }
+    lastRenderTimeRef.current = performance.now();
+    renderRafRef.current = requestAnimationFrame(runRenderCursorLoop);
+  }, [runRenderCursorLoop]);
+
+  const registerMagneticTargets = useCallback(
+    (targets: MagneticTargetSpec[]) => {
+      registeredTargetsRef.current = [...targets];
+      const map = new Map<number, string>();
+      for (const t of targets) {
+        map.set(t.id, t.key);
+      }
+      targetMapRef.current = map;
+      if (workerRef.current) {
+        void workerRef.current.setMagneticTargets(targets);
+      }
+      if (targets.length > 0) {
+        ensureRenderLoopRunning();
+      }
+    },
+    [ensureRenderLoopRunning]
+  );
+
+  const clearMagneticTargets = useCallback(() => {
+    registeredTargetsRef.current = [];
+    targetMapRef.current.clear();
+    if (workerRef.current) {
+      void workerRef.current.clearMagneticTargets();
+    }
+    if (!isPipelineActiveRef.current && renderRafRef.current) {
+      cancelAnimationFrame(renderRafRef.current);
+      renderRafRef.current = 0;
+      mouseControllerRef.current?.hide();
+      regionRef.current = 'DEADZONE';
+      dwellStartRef.current = null;
+      currentDwellProgressRef.current = 0;
+      activeTargetIdRef.current = -1;
+      isSnappedRef.current = false;
+    }
+  }, []);
+
   const stopPipeline = useCallback(() => {
+    isPipelineActiveRef.current = false;
+    latestUnifiedResultRef.current = null;
     if (inferenceRafRef.current) {
       cancelAnimationFrame(inferenceRafRef.current);
       inferenceRafRef.current = 0;
@@ -603,11 +648,19 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     currentDwellProgressRef.current = 0;
     dwellCooldownUntilRef.current = 0;
     activeTargetIdRef.current = -1;
+    isSnappedRef.current = false;
+    if (mountedRef.current) {
+      setIsPipelineActive(false);
+    }
   }, []);
 
   const startPipeline = useCallback((videoElement: HTMLVideoElement) => {
     videoRef.current = videoElement;
     stopPipeline();
+    isPipelineActiveRef.current = true;
+    if (mountedRef.current) {
+      setIsPipelineActive(true);
+    }
     void ensureEngineInitialized();
 
     const w = window.innerWidth;
@@ -636,6 +689,20 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
     mouseControllerRef.current = new WebCursorController();
 
+    const handlePointerFallback = (e: PointerEvent | MouseEvent) => {
+      if (
+        registeredTargetsRef.current.length > 0 &&
+        !latestUnifiedResultRef.current?.singleFaceReady
+      ) {
+        targetGazeRef.current = [e.clientX, e.clientY];
+        activeTargetIdRef.current = -1;
+        isSnappedRef.current = false;
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerFallback, { passive: true });
+    window.addEventListener('mousemove', handlePointerFallback, { passive: true });
+
     const initTimer = window.setTimeout(() => {
       void ensureEngineInitialized();
     }, PIPELINE_INIT_DELAY_MS);
@@ -643,6 +710,8 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mountedRef.current = false;
       window.clearTimeout(initTimer);
+      window.removeEventListener('pointermove', handlePointerFallback);
+      window.removeEventListener('mousemove', handlePointerFallback);
       stopPipeline();
       engineReadyRef.current = false;
       setIsEngineReady(false);
@@ -684,6 +753,7 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setInteractionMode = useCallback((mode: 'default' | 'confirm') => {
+    if (interactionModeRef.current === mode) return;
     interactionModeRef.current = mode;
     regionRef.current = 'DEADZONE';
     dwellStartRef.current = null;
@@ -692,36 +762,57 @@ export function GazeProvider({ children }: { children: React.ReactNode }) {
 
   const getLatestFeatures = useCallback(() => latestFeaturesRef.current, []);
 
+  const contextValue = useMemo<GazeContextType>(
+    () => ({
+      stats,
+      isInitializing,
+      isEngineReady,
+      initializationError,
+      startPipeline,
+      stopPipeline,
+      setModel,
+      setInteractionMode,
+      getLatestFeatures,
+      getEarThreshold,
+      registerMagneticTargets,
+      clearMagneticTargets,
+      recordImplicitDrift,
+      setPursuitOrbitTarget,
+      resetDwell,
+      accessibilityProfile,
+      setAccessibilityProfile,
+    }),
+    [
+      stats,
+      isInitializing,
+      isEngineReady,
+      initializationError,
+      startPipeline,
+      stopPipeline,
+      setModel,
+      setInteractionMode,
+      getLatestFeatures,
+      getEarThreshold,
+      registerMagneticTargets,
+      clearMagneticTargets,
+      recordImplicitDrift,
+      setPursuitOrbitTarget,
+      resetDwell,
+      accessibilityProfile,
+      setAccessibilityProfile,
+    ]
+  );
+
   return (
-    <GazeContext.Provider
-      value={{
-        stats,
-        isInitializing,
-        isEngineReady,
-        initializationError,
-        startPipeline,
-        stopPipeline,
-        setModel,
-        setInteractionMode,
-        getLatestFeatures,
-        getEarThreshold,
-        registerMagneticTargets,
-        clearMagneticTargets,
-        recordImplicitDrift,
-        setPursuitOrbitTarget,
-        resetDwell,
-        accessibilityProfile,
-        setAccessibilityProfile,
-      }}
-    >
+    <GazeContext.Provider value={contextValue}>
       {children}
-      {isInitializing && (
-        <div className="pointer-events-none fixed right-4 bottom-4 z-[99998] rounded-lg border border-border bg-popover/95 px-3 py-2 text-xs text-popover-foreground shadow-lg">
+      {isInitializing && isPipelineActive && (
+        <div className="pointer-events-none fixed top-3 right-3 z-[99998] rounded-lg border border-[#D4D4D8] bg-white px-3.5 py-2 text-xs font-medium text-[#0A0A0A]">
           Đang khởi động hệ thống nhận diện gaze...
         </div>
       )}
       {initializationError && (
-        <div className="pointer-events-none fixed right-4 bottom-4 z-[99998] rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow-lg">
+        <div className="pointer-events-none fixed top-3 left-1/2 -translate-x-1/2 z-[99998] rounded-lg border border-[#DC2626] bg-[#FEF2F2] px-3.5 py-2 text-xs font-medium text-[#7F1D1D]">
           Lỗi khởi tạo gaze: {initializationError}
         </div>
       )}

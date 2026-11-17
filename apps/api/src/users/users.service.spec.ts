@@ -1,6 +1,6 @@
 import { Repository } from 'typeorm';
 import { UsersService } from './users.service';
-import { User, AccessibilityProfile } from './user.entity';
+import { User } from './user.entity';
 import { NotFoundException } from '@nestjs/common';
 
 describe('UsersService - Accessibility', () => {
@@ -21,11 +21,15 @@ describe('UsersService - Accessibility', () => {
 
     repo = {
       findOne: jest.fn().mockResolvedValue(sampleUser),
-      findOneBy: jest.fn().mockImplementation(({ id }) =>
-        id === sampleUser.id ? Promise.resolve(sampleUser) : Promise.resolve(null),
-      ),
+      findOneBy: jest
+        .fn()
+        .mockImplementation(({ id }) =>
+          id === sampleUser.id
+            ? Promise.resolve(sampleUser)
+            : Promise.resolve(null),
+        ),
       find: jest.fn().mockResolvedValue([sampleUser]),
-      save: jest.fn(async (u) => u as User),
+      save: jest.fn((u: User) => Promise.resolve(u)),
     };
 
     service = new UsersService(repo as unknown as Repository<User>);
@@ -65,6 +69,9 @@ describe('UsersService - Accessibility', () => {
 
     const list = await service.findAllWithCalibration();
     expect(list.length).toBe(1);
-    expect(list[0].accessibilityProfile).toEqual(sampleUser.accessibilityProfile);
+    const firstUser = list[0] as { accessibilityProfile?: unknown };
+    expect(firstUser.accessibilityProfile).toEqual(
+      sampleUser.accessibilityProfile,
+    );
   });
 });

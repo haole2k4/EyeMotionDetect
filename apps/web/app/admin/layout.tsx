@@ -19,16 +19,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [token, userStr, router]);
 
   if (!mounted || !token || !userStr || userStr.role !== 'admin') {
-    return <div className="h-screen w-screen bg-background flex items-center justify-center">Đang tải...</div>;
+    return (
+      <div className="min-h-dvh w-full bg-[#F5F5F7] text-[#3C3C43] flex items-center justify-center text-sm font-medium">
+        Đang xác thực phiên quản trị...
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex flex-col md:flex-row min-h-dvh md:h-dvh md:overflow-hidden bg-transparent text-[#1D1D1F]">
       <AdminSidebar />
-      <main className="flex-1 overflow-y-auto p-8">
-        <div className="mx-auto max-w-6xl">
-          {children}
-        </div>
+      <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="mx-auto max-w-6xl">{children}</div>
       </main>
     </div>
   );

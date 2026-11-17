@@ -5,8 +5,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { api } from '@/lib/api';
 import Link from 'next/link';
+import { Plus, Edit2, Trash2, Settings } from 'lucide-react';
+import { toast } from 'sonner';
+import { api } from '@/lib/api';
 
 import {
   Table,
@@ -22,10 +24,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Edit2, Trash2, Settings } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export interface Exam {
   id: string;
@@ -48,6 +60,7 @@ export default function ExamsPage() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
+  const [deletingExam, setDeletingExam] = useState<Exam | null>(null);
 
   const {
     register,
@@ -63,7 +76,7 @@ export default function ExamsPage() {
     },
   });
 
-  const { data: exams, isLoading } = useQuery<Exam[]>({
+  const { data: exams, isLoading, isError } = useQuery<Exam[]>({
     queryKey: ['exams'],
     queryFn: async () => {
       const res = await api.get('/exams');
@@ -75,7 +88,11 @@ export default function ExamsPage() {
     mutationFn: (data: ExamFormData) => api.post('/exams', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exams'] });
+      toast.success('Đã tạo bài thi mới.');
       closeDialog();
+    },
+    onError: () => {
+      toast.error('Không thể tạo bài thi. Vui lòng thử lại.');
     },
   });
 
@@ -83,13 +100,25 @@ export default function ExamsPage() {
     mutationFn: (data: ExamFormData) => api.patch(`/exams/${editingExam?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exams'] });
+      toast.success('Đã cập nhật thông tin bài thi.');
       closeDialog();
+    },
+    onError: () => {
+      toast.error('Không thể cập nhật bài thi. Vui lòng thử lại.');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/exams/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
+      setDeletingExam(null);
+      toast.success('Đã xóa bài thi.');
+    },
+    onError: () => {
+      setDeletingExam(null);
+      toast.error('Không thể xóa bài thi. Vui lòng thử lại.');
+    },
   });
 
   const onSubmit = (data: ExamFormData) => {
@@ -100,12 +129,12 @@ export default function ExamsPage() {
     }
   };
 
-  const openEditDialog = (e: Exam) => {
-    setEditingExam(e);
+  const openEditDialog = (exam: Exam) => {
+    setEditingExam(exam);
     reset({
-      title: e.title,
-      description: e.description || '',
-      duration: e.duration,
+      title: exam.title,
+      description: exam.description || '',
+      duration: exam.duration,
     });
     setIsDialogOpen(true);
   };
@@ -120,97 +149,147 @@ export default function ExamsPage() {
     });
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Bạn có chắc chắn muốn xóa bài thi này?')) {
-      deleteMutation.mutate(id);
-    }
-  };
-
-  if (isLoading) return <div className="p-8 text-gray-500">Đang tải danh sách bài thi...</div>;
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý bài thi</h1>
-        <Button onClick={() => setIsDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Thêm bài thi
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#1D1D1F]">
+            Quản lý bài thi
+          </h1>
+          <p className="mt-1 text-sm text-[#515154]">
+            Tạo bài thi, thiết lập thời lượng và cấu hình câu hỏi hoặc thí sinh tham dự.
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          onClick={() => setIsDialogOpen(true)}
+          className="h-10 px-4"
+        >
+          <Plus className="mr-1.5 size-4" />
+          Thêm bài thi
         </Button>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          if (!open) closeDialog();
-          else setIsDialogOpen(true);
-        }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{editingExam ? 'Sửa bài thi' : 'Thêm bài thi mới'}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label>Tên bài thi</Label>
-                <Input {...register('title')} placeholder="Nhập tên bài thi..." />
-                {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Mô tả (không bắt buộc)</Label>
-                <Input {...register('description')} placeholder="Nhập mô tả..." />
-                {errors.description && <p className="text-red-500 text-sm">{errors.description.message}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Thời gian làm bài (phút)</Label>
-                <Input type="number" {...register('duration')} placeholder="Ví dụ: 60" />
-                {errors.duration && <p className="text-red-500 text-sm">{errors.duration.message}</p>}
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={closeDialog}>Hủy</Button>
-                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingExam ? 'Cập nhật' : 'Thêm mới'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
 
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">STT</TableHead>
-              <TableHead>Tên bài thi</TableHead>
-              <TableHead>Thời gian</TableHead>
-              <TableHead className="w-48 text-right">Thao tác</TableHead>
+      {isError ? (
+        <div className="rounded-2xl border border-[#FFB8B5] bg-[#FFECEB] px-4 py-3 text-sm font-medium text-[#D70015]">
+          Không thể tải danh sách bài thi từ máy chủ.
+        </div>
+      ) : null}
+
+      <div className="rounded-[20px] border border-black/[0.08] bg-white/95 overflow-hidden shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)]">
+        <Table className="w-full table-fixed">
+          <TableHeader className="bg-[#F5F5F7]/80">
+            <TableRow className="border-b border-black/[0.07] hover:bg-transparent">
+              <TableHead className="w-14 px-4 py-3 text-xs font-semibold text-[#3C3C43]">
+                STT
+              </TableHead>
+              <TableHead className="w-auto px-4 py-3 text-xs font-semibold text-[#3C3C43]">
+                Tên bài thi
+              </TableHead>
+              <TableHead className="w-32 px-4 py-3 text-xs font-semibold text-[#3C3C43]">
+                Thời gian
+              </TableHead>
+              <TableHead className="w-36 px-4 py-3 text-right text-xs font-semibold text-[#3C3C43]">
+                Thao tác
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {exams?.length === 0 ? (
+            {isLoading ? (
+              Array.from({ length: 6 }).map((_, idx) => (
+                <TableRow key={idx} className="border-b border-black/[0.06] last:border-b-0">
+                  <TableCell className="px-4 py-3.5">
+                    <Skeleton className="h-4 w-6" />
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="h-3.5 w-1/2" />
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5">
+                    <Skeleton className="h-4 w-16" />
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5 text-right">
+                    <div className="inline-flex items-center justify-end gap-1">
+                      <Skeleton className="size-8 rounded-[10px]" />
+                      <Skeleton className="size-8 rounded-[10px]" />
+                      <Skeleton className="size-8 rounded-[10px]" />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : exams?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={4} className="py-10 text-center text-sm text-[#515154]">
                   Chưa có bài thi nào.
                 </TableCell>
               </TableRow>
             ) : (
-              exams?.map((e, idx) => (
-                <TableRow key={e.id}>
-                  <TableCell>{idx + 1}</TableCell>
-                  <TableCell>
-                    <div className="font-medium">{e.title}</div>
-                    {e.description && <div className="text-sm text-muted-foreground mt-1 line-clamp-1">{e.description}</div>}
+              exams?.map((exam, idx) => (
+                <TableRow
+                  key={exam.id}
+                  className="border-b border-black/[0.06] last:border-b-0 hover:bg-[#F5F5F7]/65 transition-colors"
+                >
+                  <TableCell className="px-4 py-3.5 text-sm text-[#515154] tabular-nums">
+                    {idx + 1}
                   </TableCell>
-                  <TableCell>{e.duration} phút</TableCell>
-                  <TableCell className="text-right">
-                    <Link href={`/admin/exams/${e.id}`}>
-                      <Button variant="ghost" size="icon" type="button">
-                        <Settings className="h-4 w-4 text-blue-500" />
+                  <TableCell className="px-4 py-3.5">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-[#1D1D1F]" title={exam.title}>
+                        {exam.title}
+                      </div>
+                      {exam.description ? (
+                        <div
+                          className="mt-0.5 truncate text-sm text-[#515154]"
+                          title={exam.description}
+                        >
+                          {exam.description}
+                        </div>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5 text-sm text-[#3C3C43] tabular-nums">
+                    {exam.duration} phút
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5 text-right">
+                    <div className="inline-flex items-center justify-end gap-1">
+                      <Link href={`/admin/exams/${exam.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          type="button"
+                          aria-label={`Cấu hình bài thi ${exam.title}`}
+                          title="Cấu hình câu hỏi & thí sinh"
+                          className="text-[#0066CC] hover:bg-[#E8F2FF] hover:text-[#0066CC]"
+                        >
+                          <Settings className="size-4" />
+                        </Button>
+                      </Link>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Sửa bài thi ${exam.title}`}
+                        title="Sửa bài thi"
+                        onClick={() => openEditDialog(exam)}
+                        className="text-[#3C3C43] hover:bg-black/[0.05] hover:text-[#1D1D1F]"
+                      >
+                        <Edit2 className="size-4" />
                       </Button>
-                    </Link>
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(e)}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(e.id)} className="text-red-500 hover:text-red-700">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Xóa bài thi ${exam.title}`}
+                        title="Xóa bài thi"
+                        onClick={() => setDeletingExam(exam)}
+                        className="text-[#D70015] hover:bg-[#FFECEB] hover:text-[#D70015]"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -218,6 +297,121 @@ export default function ExamsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Create / Edit Exam Dialog */}
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDialog();
+          else setIsDialogOpen(true);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-[#1D1D1F]">
+              {editingExam ? 'Sửa bài thi' : 'Thêm bài thi mới'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label htmlFor="exam-title" className="text-sm font-medium text-[#1D1D1F]">
+                Tên bài thi
+              </Label>
+              <Input
+                id="exam-title"
+                {...register('title')}
+                placeholder="Nhập tên bài thi..."
+                className="bg-white"
+              />
+              {errors.title ? (
+                <p className="text-sm text-[#D70015]">{errors.title.message}</p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="exam-description" className="text-sm font-medium text-[#1D1D1F]">
+                Mô tả (không bắt buộc)
+              </Label>
+              <Input
+                id="exam-description"
+                {...register('description')}
+                placeholder="Nhập mô tả..."
+                className="bg-white"
+              />
+              {errors.description ? (
+                <p className="text-sm text-[#D70015]">{errors.description.message}</p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="exam-duration" className="text-sm font-medium text-[#1D1D1F]">
+                Thời gian làm bài (phút)
+              </Label>
+              <Input
+                id="exam-duration"
+                type="number"
+                {...register('duration')}
+                placeholder="Ví dụ: 60"
+                className="bg-white tabular-nums"
+              />
+              {errors.duration ? (
+                <p className="text-sm text-[#D70015]">{errors.duration.message}</p>
+              ) : null}
+            </div>
+
+            <div className="-mx-6 -mb-6 flex justify-end gap-2.5 rounded-b-[24px] border-t border-black/[0.07] bg-[#F5F5F7]/80 px-6 py-4 backdrop-blur-md">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeDialog}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
+                {editingExam ? 'Cập nhật' : 'Thêm mới'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation AlertDialog */}
+      <AlertDialog
+        open={Boolean(deletingExam)}
+        onOpenChange={(open) => {
+          if (!open) setDeletingExam(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#1D1D1F]">
+              Xóa bài thi?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[#515154]">
+              Bạn có chắc chắn muốn xóa bài thi{' '}
+              <strong className="text-[#1D1D1F]">{deletingExam?.title}</strong>? Hành động này
+              không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingExam) deleteMutation.mutate(deletingExam.id);
+              }}
+              disabled={deleteMutation.isPending}
+              className="bg-none bg-[#D70015] text-white shadow-[0_2px_6px_rgba(215,0,21,0.28)] hover:bg-[#B80012]"
+            >
+              {deleteMutation.isPending ? 'Đang xóa...' : 'Xác nhận xóa'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

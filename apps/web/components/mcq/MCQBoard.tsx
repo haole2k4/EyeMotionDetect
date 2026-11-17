@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { useGaze } from '../gaze/GazeProvider';
 
 interface ExtendedGazeStats {
@@ -50,86 +51,20 @@ interface MCQBoardProps {
   onSubmit?: () => void;
 }
 
-type DwellTone = 'A' | 'B' | 'C' | 'D' | 'sky' | 'emerald' | 'rose';
+type DwellTone = 'blue' | 'emerald' | 'rose';
 
-const SWEEP_STYLES: Record<DwellTone, { curtain: string; bar: string }> = {
-  A: {
-    curtain: 'from-blue-500/20 via-blue-400/35 to-cyan-300/50 border-r-2 border-cyan-300',
-    bar: 'bg-gradient-to-r from-blue-400 to-cyan-300',
-  },
-  B: {
-    curtain: 'from-purple-500/20 via-purple-400/35 to-pink-300/50 border-r-2 border-pink-300',
-    bar: 'bg-gradient-to-r from-purple-400 to-pink-300',
-  },
-  C: {
-    curtain: 'from-emerald-500/20 via-emerald-400/35 to-teal-300/50 border-r-2 border-teal-300',
-    bar: 'bg-gradient-to-r from-emerald-400 to-teal-300',
-  },
-  D: {
-    curtain: 'from-amber-500/20 via-amber-400/35 to-yellow-300/50 border-r-2 border-yellow-300',
-    bar: 'bg-gradient-to-r from-amber-400 to-yellow-300',
-  },
-  sky: {
-    curtain: 'from-sky-500/20 via-sky-400/30 to-cyan-300/45 border-r-2 border-sky-300',
-    bar: 'bg-gradient-to-r from-sky-400 to-cyan-300',
+const SWEEP_TONE_CLASSES: Record<DwellTone, { overlay: string; bar: string }> = {
+  blue: {
+    overlay: 'bg-[#0066CC]/[0.09] border-r-2 border-[#0066CC]',
+    bar: 'bg-[#0066CC]',
   },
   emerald: {
-    curtain: 'from-emerald-500/20 via-emerald-400/30 to-teal-300/45 border-r-2 border-emerald-300',
-    bar: 'bg-gradient-to-r from-emerald-400 to-teal-300',
+    overlay: 'bg-[#12783D]/[0.09] border-r-2 border-[#12783D]',
+    bar: 'bg-[#12783D]',
   },
   rose: {
-    curtain: 'from-rose-500/20 via-rose-400/30 to-pink-300/45 border-r-2 border-rose-300',
-    bar: 'bg-gradient-to-r from-rose-500 to-pink-400',
-  },
-};
-
-const OPTION_THEMES: Record<
-  'A' | 'B' | 'C' | 'D',
-  {
-    base: string;
-    active: string;
-    selected: string;
-    badge: string;
-    activePill: string;
-    activeDot: string;
-    selectedPill: string;
-  }
-> = {
-  A: {
-    base: 'border-blue-500/60 bg-[#0d1629] hover:border-blue-400/80',
-    active: 'border-cyan-300 bg-blue-950/90 shadow-[0_0_28px_rgba(56,189,248,0.45)]',
-    selected: 'border-cyan-300 bg-blue-900/80 ring-2 ring-cyan-400/80',
-    badge: 'bg-blue-600 text-white',
-    activePill: 'border-cyan-400/60 bg-blue-950/90 text-cyan-200',
-    activeDot: 'bg-cyan-300',
-    selectedPill: 'border-cyan-400/60 bg-blue-950/80 text-cyan-200',
-  },
-  B: {
-    base: 'border-purple-500/60 bg-[#160d29] hover:border-purple-400/80',
-    active: 'border-purple-300 bg-purple-950/90 shadow-[0_0_28px_rgba(192,132,252,0.45)]',
-    selected: 'border-purple-300 bg-purple-900/80 ring-2 ring-purple-400/80',
-    badge: 'bg-purple-600 text-white',
-    activePill: 'border-purple-400/60 bg-purple-950/90 text-purple-200',
-    activeDot: 'bg-pink-300',
-    selectedPill: 'border-purple-400/60 bg-purple-950/80 text-purple-200',
-  },
-  C: {
-    base: 'border-emerald-500/60 bg-[#0d2919] hover:border-emerald-400/80',
-    active: 'border-emerald-300 bg-emerald-950/90 shadow-[0_0_28px_rgba(52,211,153,0.45)]',
-    selected: 'border-emerald-300 bg-emerald-900/80 ring-2 ring-emerald-400/80',
-    badge: 'bg-emerald-600 text-white',
-    activePill: 'border-emerald-400/60 bg-emerald-950/90 text-emerald-200',
-    activeDot: 'bg-teal-300',
-    selectedPill: 'border-emerald-400/60 bg-emerald-950/80 text-emerald-200',
-  },
-  D: {
-    base: 'border-amber-500/60 bg-[#291e0d] hover:border-amber-400/80',
-    active: 'border-amber-300 bg-amber-950/90 shadow-[0_0_28px_rgba(251,191,36,0.45)]',
-    selected: 'border-amber-300 bg-amber-900/80 ring-2 ring-amber-400/80',
-    badge: 'bg-amber-600 text-white',
-    activePill: 'border-amber-400/60 bg-amber-950/90 text-amber-200',
-    activeDot: 'bg-yellow-300',
-    selectedPill: 'border-amber-400/60 bg-amber-950/80 text-yellow-200',
+    overlay: 'bg-[#D70015]/[0.09] border-r-2 border-[#D70015]',
+    bar: 'bg-[#D70015]',
   },
 };
 
@@ -139,18 +74,25 @@ interface GazeDwellSweepProps {
   tone?: DwellTone;
 }
 
-function GazeDwellSweep({ active, progress, tone = 'sky' }: GazeDwellSweepProps) {
+function GazeDwellSweep({ active, progress, tone = 'blue' }: GazeDwellSweepProps) {
   if (!active && progress <= 0) return null;
 
   const clamped = Math.max(active ? 3 : 0, Math.min(100, progress));
-  const toneStyles = SWEEP_STYLES[tone];
+  const toneStyles = SWEEP_TONE_CLASSES[tone];
 
   return (
-    <div
-      aria-hidden="true"
-      className={`pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r transition-[width] duration-75 ease-linear ${toneStyles.curtain}`}
-      style={{ width: `${clamped}%` }}
-    />
+    <>
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-y-0 left-0 transition-[width] duration-75 ease-linear ${toneStyles.overlay}`}
+        style={{ width: `${clamped}%` }}
+      />
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute bottom-0 left-0 h-2 transition-[width] duration-75 ease-linear ${toneStyles.bar}`}
+        style={{ width: `${clamped}%` }}
+      />
+    </>
   );
 }
 
@@ -173,45 +115,49 @@ function OptionCard({
   dwellProgress,
   onSelect,
 }: OptionCardProps) {
-  const theme = OPTION_THEMES[letter];
+  const cardSurfaceClass = isSelected
+    ? 'bg-[#ECFDF3] border-2 border-[#12783D] shadow-[0_6px_18px_-4px_rgba(18,120,61,0.18),inset_0_1px_0_rgba(255,255,255,0.8)]'
+    : isActive
+      ? 'bg-[#F5F9FF] border-2 border-[#0066CC] shadow-[0_12px_28px_-6px_rgba(0,102,204,0.22),inset_0_1px_0_rgba(255,255,255,0.9)]'
+      : 'bg-white/95 border-[1.5px] border-black/[0.10] shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)] hover:border-[#0066CC]';
+
+  const letterBadgeClass = isSelected
+    ? 'bg-[#12783D] text-white border-[#12783D]'
+    : isActive
+      ? 'bg-[#0066CC] text-white border-[#0066CC]'
+      : 'bg-[#F2F2F7] border-black/[0.08] text-[#1D1D1F]';
 
   return (
     <div
       ref={cardRef}
       onClick={onSelect}
-      className={`relative h-full min-h-0 cursor-pointer overflow-hidden rounded-2xl border-[1.5px] p-5 md:p-6 flex flex-col justify-between gap-3 transition-all duration-150 ${
-        isSelected
-          ? theme.selected
-          : isActive
-            ? theme.active
-            : theme.base
-      }`}
+      className={`relative h-full min-h-0 cursor-pointer overflow-hidden rounded-[22px] p-5 md:p-6 flex flex-col justify-between gap-3 transition-[border-color,background-color,box-shadow] duration-150 ${cardSurfaceClass}`}
     >
-      <GazeDwellSweep active={isActive} progress={dwellProgress} tone={letter} />
+      <GazeDwellSweep active={isActive} progress={dwellProgress} tone="blue" />
 
       <div className="relative z-10 flex items-center justify-between gap-3">
         <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl font-bold tracking-tight shadow-sm transition-colors ${theme.badge}`}
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border text-xl font-bold transition-colors ${letterBadgeClass}`}
         >
           {letter}
         </span>
 
         <div className="flex items-center gap-2">
           {isSelected && (
-            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${theme.selectedPill}`}>
-              Đã chọn
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#86EFAC] bg-[#DCFCE7] px-3 py-1 text-xs font-semibold text-[#12783D]">
+              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+              <span>Đã chọn</span>
             </span>
           )}
           {isActive && (
-            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide tabular-nums ${theme.activePill}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${theme.activeDot}`} />
-              {`Đang giữ • ${Math.round(dwellProgress)}%`}
+            <span className="inline-flex items-center rounded-full bg-[#0066CC] px-3 py-1 text-xs font-semibold text-white tabular-nums">
+              {`Đang giữ · ${Math.round(dwellProgress)}%`}
             </span>
           )}
         </div>
       </div>
 
-      <p className="relative z-10 text-lg md:text-xl lg:text-[22px] font-medium text-slate-100 leading-snug line-clamp-4">
+      <p className="relative z-10 text-lg md:text-xl lg:text-[22px] font-medium text-[#1D1D1F] leading-snug line-clamp-4">
         {text}
       </p>
     </div>
@@ -233,7 +179,15 @@ export function MCQBoard({
 
   const rawGaze = useGaze();
   const gaze = rawGaze as unknown as ExtendedGazeContext;
-  const stats = gaze.stats;
+  const {
+    stats,
+    setInteractionMode,
+    registerMagneticTargets,
+    clearMagneticTargets,
+    recordImplicitDrift,
+    setPursuitOrbitTarget,
+    resetDwell,
+  } = gaze;
 
   const [confirmAction, setConfirmAction] = useState<{
     id: 'A' | 'B' | 'C' | 'D' | 'PREV' | 'NEXT' | 'SUBMIT';
@@ -258,7 +212,6 @@ export function MCQBoard({
   const pursuitTriggeredRef = useRef<boolean>(false);
 
   // Sync selected option with current question's saved answer and reset dwell cooldown
-  const resetDwell = gaze?.resetDwell;
   useEffect(() => {
     setSelected(selectedAnswer ?? null);
     resetDwell?.(1200);
@@ -287,6 +240,10 @@ export function MCQBoard({
           const r = modalPursuitRef.current.getBoundingClientRect();
           targets.push({ id: 102, key: 'SUBMIT_PURSUIT', x: r.left, y: r.top, width: r.width, height: r.height, gravityRadius: 90 });
         }
+        if (modalConfirmRef.current) {
+          const r = modalConfirmRef.current.getBoundingClientRect();
+          targets.push({ id: 103, key: 'NEXT', x: r.left, y: r.top, width: r.width, height: r.height, gravityRadius: 75 });
+        }
       } else {
         if (modalCancelRef.current) {
           const r = modalCancelRef.current.getBoundingClientRect();
@@ -298,7 +255,7 @@ export function MCQBoard({
         }
       }
 
-      gaze?.registerMagneticTargets?.(targets);
+      registerMagneticTargets?.(targets);
       return;
     }
 
@@ -330,9 +287,9 @@ export function MCQBoard({
       .filter((t): t is NonNullable<typeof t> => Boolean(t));
 
     if (targets.length > 0) {
-      gaze?.registerMagneticTargets?.(targets);
+      registerMagneticTargets?.(targets);
     }
-  }, [confirmAction, gaze]);
+  }, [confirmAction, registerMagneticTargets]);
 
   // Keep magnetic targets synchronized with resize and content updates
   useEffect(() => {
@@ -346,17 +303,23 @@ export function MCQBoard({
     });
 
     if (cardARef.current) observer.observe(cardARef.current);
+    if (cardBRef.current) observer.observe(cardBRef.current);
+    if (cardCRef.current) observer.observe(cardCRef.current);
+    if (cardDRef.current) observer.observe(cardDRef.current);
     if (prevBtnRef.current) observer.observe(prevBtnRef.current);
     if (nextBtnRef.current) observer.observe(nextBtnRef.current);
     if (submitBtnRef.current) observer.observe(submitBtnRef.current);
+    if (modalCancelRef.current) observer.observe(modalCancelRef.current);
+    if (modalConfirmRef.current) observer.observe(modalConfirmRef.current);
+    if (modalPursuitRef.current) observer.observe(modalPursuitRef.current);
 
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', handleResize);
       observer.disconnect();
-      gaze?.clearMagneticTargets?.();
+      clearMagneticTargets?.();
     };
-  }, [registerTargets, gaze, question, confirmAction]);
+  }, [registerTargets, clearMagneticTargets, question, confirmAction]);
 
   // 2. Continuous Orbiting Stimulus Animation for Smooth Pursuit
   useEffect(() => {
@@ -390,12 +353,12 @@ export function MCQBoard({
         const rect = targetElement.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-        gaze?.setPursuitOrbitTarget?.({ x: centerX, y: centerY, radius: 48 });
+        setPursuitOrbitTarget?.({ x: centerX, y: centerY, radius: 48 });
       }
     } else {
-      gaze?.setPursuitOrbitTarget?.(null);
+      setPursuitOrbitTarget?.(null);
     }
-  }, [stats?.activeTargetKey, stats?.currentRegion, confirmAction, gaze]);
+  }, [stats?.activeTargetKey, stats?.currentRegion, confirmAction, setPursuitOrbitTarget]);
 
   // Handle Action Request
   const handleActionRequest = useCallback(
@@ -421,10 +384,10 @@ export function MCQBoard({
         const rect = element.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-        gaze?.recordImplicitDrift?.(centerX, centerY);
+        recordImplicitDrift?.(centerX, centerY);
       }
     },
-    [gaze],
+    [recordImplicitDrift],
   );
 
   // Direct answer selection on dwell completion or click (no confirmation modal)
@@ -457,9 +420,9 @@ export function MCQBoard({
       }
 
       setConfirmAction(null);
-      gaze?.setPursuitOrbitTarget?.(null);
+      setPursuitOrbitTarget?.(null);
     },
-    [confirmAction, onAnswerSelected, onPrev, onNext, onSubmit, performImplicitDriftCorrection, gaze],
+    [confirmAction, onAnswerSelected, onPrev, onNext, onSubmit, performImplicitDriftCorrection, setPursuitOrbitTarget],
   );
 
   // 4. Smooth Pursuit Triggered for SUBMIT (0% accidental triggers)
@@ -485,10 +448,10 @@ export function MCQBoard({
     lastSaccadeHandledRef.current = now;
 
     if (saccade === 'next' && onNext) {
-      setSaccadeNotice('Liếc cạnh phải • Câu tiếp theo');
+      setSaccadeNotice('Liếc cạnh phải · Câu tiếp theo');
       onNext();
     } else if (saccade === 'prev' && onPrev) {
-      setSaccadeNotice('Liếc cạnh trái • Quay lại câu trước');
+      setSaccadeNotice('Liếc cạnh trái · Quay lại câu trước');
       onPrev();
     }
 
@@ -502,11 +465,11 @@ export function MCQBoard({
   // Sync interaction mode with GazeProvider
   const isConfirming = Boolean(confirmAction);
   useEffect(() => {
-    gaze?.setInteractionMode?.(isConfirming ? 'confirm' : 'default');
+    setInteractionMode?.(isConfirming ? 'confirm' : 'default');
     return () => {
-      gaze?.setInteractionMode?.('default');
+      setInteractionMode?.('default');
     };
-  }, [isConfirming, gaze]);
+  }, [isConfirming, setInteractionMode]);
 
   // Helper to determine if an element is magnetically locked or hovered
   const isTargetActive = (key: string) => {
@@ -523,24 +486,24 @@ export function MCQBoard({
   const pursuitProgress = stats?.pursuitProgress ?? 0;
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#080B11] text-slate-100 select-none">
+    <div className="relative h-full w-full overflow-y-auto md:overflow-hidden bg-[#F5F5F7] text-[#1D1D1F] select-none">
       {/* Saccadic Gesture Toast HUD */}
       {saccadeNotice && (
-        <div className="pointer-events-none fixed top-5 left-1/2 -translate-x-1/2 z-[9999] rounded-xl border border-sky-400/50 bg-[#0D1524]/95 px-5 py-2 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200">
-          <p className="text-sm font-semibold text-sky-200 tracking-wide">
+        <div className="apple-glass pointer-events-none fixed top-5 left-1/2 -translate-x-1/2 z-[9999] rounded-2xl px-5 py-2.5">
+          <p className="text-sm font-semibold text-[#1D1D1F]">
             {saccadeNotice}
           </p>
         </div>
       )}
 
-      {/* Main 12-Col x 3-Row Precision Exam Layout */}
+      {/* Main Responsive Exam Layout: 2-Col on Mobile (<md), 12-Col x 3-Row on Desktop (md+) */}
       <div
-        className={`grid grid-cols-12 grid-rows-[minmax(0,1fr)_auto_minmax(0,1fr)] h-full w-full gap-4 md:gap-6 p-4 md:p-6 transition-opacity duration-200 ${
-          isConfirming ? 'pointer-events-none opacity-20 filter blur-[2px]' : ''
+        className={`grid grid-cols-2 md:grid-cols-12 md:grid-rows-[minmax(0,1fr)_auto_minmax(0,1fr)] min-h-full md:h-full w-full gap-4 md:gap-8 p-4 md:p-6 transition-opacity duration-200 ${
+          isConfirming ? 'pointer-events-none opacity-25' : ''
         }`}
       >
         {/* ROW 0: Option A | Center Rest Spacer | Option B */}
-        <div className="col-span-5 min-h-0">
+        <div className="order-1 md:order-none col-span-1 md:col-span-5 min-h-[128px] md:min-h-0">
           <OptionCard
             letter="A"
             text={options.A}
@@ -552,9 +515,9 @@ export function MCQBoard({
           />
         </div>
 
-        <div className="col-span-2 min-h-0" aria-hidden="true" />
+        <div className="hidden md:block md:col-span-2 min-h-0" aria-hidden="true" />
 
-        <div className="col-span-5 min-h-0">
+        <div className="order-2 md:order-none col-span-1 md:col-span-5 min-h-[128px] md:min-h-0">
           <OptionCard
             letter="B"
             text={options.B}
@@ -567,58 +530,64 @@ export function MCQBoard({
         </div>
 
         {/* ROW 1: PREV | Wide Question Display | NEXT */}
-        <div className="col-span-2 min-h-0 flex items-stretch">
+        <div className="order-4 md:order-none col-span-1 md:col-span-2 min-h-0 flex items-stretch">
           <div
             ref={prevBtnRef}
             onClick={() => onPrev?.()}
-            className={`relative w-full min-h-[104px] cursor-pointer overflow-hidden rounded-2xl border-[1.5px] px-3 py-3 flex flex-col items-center justify-center gap-1.5 transition-all duration-150 ${
+            className={`relative w-full min-h-[76px] md:min-h-[108px] cursor-pointer overflow-hidden rounded-[22px] px-3 py-3 flex flex-row md:flex-col items-center justify-center gap-2 transition-[border-color,background-color,box-shadow] duration-150 ${
               isTargetActive('PREV')
-                ? 'border-sky-300 bg-sky-950/90 shadow-[0_0_24px_rgba(56,189,248,0.4)]'
-                : 'border-sky-500/40 bg-[#0d1829] hover:border-sky-400/70'
+                ? 'border-2 border-[#0066CC] bg-[#F5F9FF] shadow-[0_12px_28px_-6px_rgba(0,102,204,0.22),inset_0_1px_0_rgba(255,255,255,0.9)]'
+                : 'border-[1.5px] border-black/[0.10] bg-white/95 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)] hover:border-[#0066CC]'
             }`}
           >
-            <GazeDwellSweep active={isTargetActive('PREV')} progress={getDwellProgress('PREV')} tone="sky" />
-            <div className="relative z-10 flex flex-col items-center gap-1">
-              <span className="text-lg font-bold text-sky-300">◀</span>
-              <span className="text-sm md:text-base font-semibold text-slate-100 text-center">
+            <GazeDwellSweep active={isTargetActive('PREV')} progress={getDwellProgress('PREV')} tone="blue" />
+            <div className="relative z-10 flex flex-row md:flex-col items-center gap-2 md:gap-1.5">
+              <ArrowLeft
+                className={`h-5 w-5 md:h-6 md:w-6 shrink-0 ${isTargetActive('PREV') ? 'text-[#0066CC]' : 'text-[#1D1D1F]'}`}
+                strokeWidth={2.25}
+              />
+              <span className="text-sm md:text-base font-semibold text-[#1D1D1F] text-center whitespace-nowrap">
                 Câu trước
               </span>
               {isTargetActive('PREV') && (
-                <span className="inline-flex items-center rounded-full border border-sky-400/50 bg-sky-950/90 px-2 py-0.5 text-[10px] font-semibold text-sky-200 tabular-nums">
-                  {`Đang giữ • ${Math.round(getDwellProgress('PREV'))}%`}
+                <span className="inline-flex items-center rounded-full bg-[#0066CC] px-2.5 py-0.5 text-xs font-semibold text-white tabular-nums">
+                  {`Đang giữ · ${Math.round(getDwellProgress('PREV'))}%`}
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        <div className="col-span-8 min-h-0 flex items-center justify-center">
-          <div className="w-full h-full min-h-[112px] rounded-2xl border-[1.5px] border-slate-700/80 bg-[#0D121C] px-6 py-4 md:px-10 md:py-6 flex flex-col items-center justify-center">
-            <h1 className="text-xl md:text-2xl lg:text-[26px] font-semibold text-slate-50 text-center leading-snug tracking-normal">
+        <div className="order-3 md:order-none col-span-2 md:col-span-8 min-h-0 flex items-center justify-center">
+          <div className="w-full h-full min-h-[112px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 px-5 py-4 md:px-10 md:py-6 flex flex-col items-center justify-center shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)]">
+            <h1 className="text-2xl md:text-[28px] font-semibold text-[#1D1D1F] text-center leading-snug tracking-[-0.01em]">
               {question}
             </h1>
           </div>
         </div>
 
-        <div className="col-span-2 min-h-0 flex items-stretch">
+        <div className="order-5 md:order-none col-span-1 md:col-span-2 min-h-0 flex items-stretch">
           <div
             ref={nextBtnRef}
             onClick={() => onNext?.()}
-            className={`relative w-full min-h-[104px] cursor-pointer overflow-hidden rounded-2xl border-[1.5px] px-3 py-3 flex flex-col items-center justify-center gap-1.5 transition-all duration-150 ${
+            className={`relative w-full min-h-[76px] md:min-h-[108px] cursor-pointer overflow-hidden rounded-[22px] px-3 py-3 flex flex-row md:flex-col items-center justify-center gap-2 transition-[border-color,background-color,box-shadow] duration-150 ${
               isTargetActive('NEXT')
-                ? 'border-sky-300 bg-sky-950/90 shadow-[0_0_24px_rgba(56,189,248,0.4)]'
-                : 'border-sky-500/40 bg-[#0d1829] hover:border-sky-400/70'
+                ? 'border-2 border-[#0066CC] bg-[#F5F9FF] shadow-[0_12px_28px_-6px_rgba(0,102,204,0.22),inset_0_1px_0_rgba(255,255,255,0.9)]'
+                : 'border-[1.5px] border-black/[0.10] bg-white/95 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)] hover:border-[#0066CC]'
             }`}
           >
-            <GazeDwellSweep active={isTargetActive('NEXT')} progress={getDwellProgress('NEXT')} tone="sky" />
-            <div className="relative z-10 flex flex-col items-center gap-1">
-              <span className="text-lg font-bold text-sky-300">▶</span>
-              <span className="text-sm md:text-base font-semibold text-slate-100 text-center">
+            <GazeDwellSweep active={isTargetActive('NEXT')} progress={getDwellProgress('NEXT')} tone="blue" />
+            <div className="relative z-10 flex flex-row md:flex-col items-center gap-2 md:gap-1.5">
+              <ArrowRight
+                className={`h-5 w-5 md:h-6 md:w-6 shrink-0 ${isTargetActive('NEXT') ? 'text-[#0066CC]' : 'text-[#1D1D1F]'}`}
+                strokeWidth={2.25}
+              />
+              <span className="text-sm md:text-base font-semibold text-[#1D1D1F] text-center whitespace-nowrap">
                 Câu tiếp
               </span>
               {isTargetActive('NEXT') && (
-                <span className="inline-flex items-center rounded-full border border-sky-400/50 bg-sky-950/90 px-2 py-0.5 text-[10px] font-semibold text-sky-200 tabular-nums">
-                  {`Đang giữ • ${Math.round(getDwellProgress('NEXT'))}%`}
+                <span className="inline-flex items-center rounded-full bg-[#0066CC] px-2.5 py-0.5 text-xs font-semibold text-white tabular-nums">
+                  {`Đang giữ · ${Math.round(getDwellProgress('NEXT'))}%`}
                 </span>
               )}
             </div>
@@ -626,7 +595,7 @@ export function MCQBoard({
         </div>
 
         {/* ROW 2: Option C | SUBMIT (Smooth Pursuit) | Option D */}
-        <div className="col-span-5 min-h-0">
+        <div className="order-6 md:order-none col-span-1 md:col-span-5 min-h-[128px] md:min-h-0">
           <OptionCard
             letter="C"
             text={options.C}
@@ -638,14 +607,14 @@ export function MCQBoard({
           />
         </div>
 
-        <div className="col-span-2 min-h-0 flex items-stretch">
+        <div className="order-8 md:order-none col-span-2 md:col-span-2 min-h-0 flex items-stretch">
           <div
             ref={submitBtnRef}
             onClick={() => handleActionRequest('SUBMIT', 'nộp bài')}
-            className={`relative w-full h-full cursor-pointer overflow-hidden rounded-2xl border-[1.5px] px-3 py-3 flex flex-col items-center justify-center gap-2 transition-all duration-150 ${
+            className={`relative w-full h-full min-h-[76px] md:min-h-0 cursor-pointer overflow-hidden rounded-[22px] px-4 py-3 flex flex-row md:flex-col items-center justify-center gap-3 md:gap-2 transition-[border-color,background-color,box-shadow] duration-150 ${
               isTargetActive('SUBMIT')
-                ? 'border-rose-300 bg-rose-950/90 shadow-[0_0_28px_rgba(244,63,94,0.45)]'
-                : 'border-rose-500/55 bg-[#1c0d16] hover:border-rose-400/80'
+                ? 'border-2 border-[#D70015] bg-[#FFECEB] shadow-[0_12px_28px_-6px_rgba(215,0,21,0.20),inset_0_1px_0_rgba(255,255,255,0.9)]'
+                : 'border-[1.5px] border-[#FFB8B5] bg-white/95 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)] hover:border-[#D70015] hover:bg-[#FFECEB]'
             }`}
           >
             <GazeDwellSweep
@@ -655,26 +624,26 @@ export function MCQBoard({
             />
 
             {/* Smooth Pursuit Orbit Stimulus */}
-            <div className="relative z-10 flex items-center justify-center w-11 h-11 rounded-full border border-rose-400/40 bg-rose-950/60 mt-1">
+            <div className="relative z-10 flex items-center justify-center w-11 h-11 md:w-12 md:h-12 shrink-0 rounded-full border-2 border-[#D70015] bg-[#FFECEB] md:mt-1">
               <div
-                className="absolute w-3 h-3 rounded-full bg-sky-300 shadow-[0_0_10px_rgba(56,189,248,0.85)] pointer-events-none"
+                className="absolute w-3.5 h-3.5 rounded-full bg-[#0066CC] border-2 border-white pointer-events-none"
                 style={{
                   transform: `translate(${Math.cos(orbitAngle) * 16}px, ${Math.sin(orbitAngle) * 16}px)`,
                 }}
               />
-              <div className="w-2 h-2 rounded-full bg-rose-400/90" />
+              <div className="w-2 h-2 rounded-full bg-[#D70015]" />
             </div>
 
-            <div className="relative z-10 flex flex-col items-center text-center">
-              <span className="text-base md:text-lg font-bold text-slate-100 leading-tight">
+            <div className="relative z-10 flex flex-col items-start md:items-center text-left md:text-center">
+              <span className="text-base md:text-lg font-bold text-[#1D1D1F] leading-tight">
                 Nộp bài
               </span>
               {isTargetActive('SUBMIT') ? (
-                <span className="mt-1 inline-flex items-center rounded-full border border-rose-400/50 bg-rose-950/90 px-2 py-0.5 text-[10px] font-semibold text-rose-200 tabular-nums">
-                  {`Đang giữ • ${Math.round(Math.max(getDwellProgress('SUBMIT'), pursuitProgress * 100))}%`}
+                <span className="mt-1 inline-flex items-center rounded-full bg-[#D70015] px-2.5 py-0.5 text-xs font-semibold text-white tabular-nums">
+                  {`Đang giữ · ${Math.round(Math.max(getDwellProgress('SUBMIT'), pursuitProgress * 100))}%`}
                 </span>
               ) : (
-                <span className="text-[11px] font-medium text-rose-200/75 mt-0.5">
+                <span className="text-xs font-medium text-[#D70015] mt-0.5">
                   Lia mắt theo chấm
                 </span>
               )}
@@ -682,7 +651,7 @@ export function MCQBoard({
           </div>
         </div>
 
-        <div className="col-span-5 min-h-0">
+        <div className="order-7 md:order-none col-span-1 md:col-span-5 min-h-[128px] md:min-h-0">
           <OptionCard
             letter="D"
             text={options.D}
@@ -697,19 +666,21 @@ export function MCQBoard({
 
       {/* Gaze-Aware Confirmation Modal */}
       {confirmAction && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-6 md:p-8 animate-in fade-in duration-150">
-          <div className="relative w-full max-w-4xl rounded-2xl border border-slate-700/80 bg-[#0C111B] p-8 md:p-10 shadow-2xl flex flex-col items-center justify-between min-h-[420px]">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/25 backdrop-blur-[6px] p-4 md:p-8">
+          <div className="apple-glass-modal relative w-full max-w-4xl rounded-[28px] p-6 md:p-10 flex flex-col items-center justify-between min-h-[380px] md:min-h-[420px]">
             {/* Header Dialog */}
-            <div className="text-center space-y-2.5">
-              <span className="inline-block rounded-full bg-slate-900 px-3.5 py-1 text-xs font-semibold text-sky-300 border border-slate-700 uppercase tracking-widest">
+            <div className="text-center space-y-3">
+              <span className="inline-block rounded-full border border-black/[0.08] bg-[#F2F2F7] px-4 py-1 text-xs font-semibold text-[#1D1D1F]">
                 Xác nhận cử chỉ mắt
               </span>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-50">
-                Xác nhận chọn {confirmAction.label}?
+              <h2 className="text-2xl md:text-3xl font-bold text-[#1D1D1F] tracking-[-0.02em]">
+                {confirmAction.id === 'SUBMIT'
+                  ? 'Xác nhận nộp bài thi?'
+                  : `Xác nhận chọn ${confirmAction.label}?`}
               </h2>
               {confirmAction.id === 'SUBMIT' && (
-                <p className="text-sm md:text-base font-medium text-slate-300 max-w-xl mx-auto">
-                  Hãy lia mắt đuổi theo chấm sáng vệ tinh bên dưới để xác nhận nộp bài an toàn.
+                <p className="text-sm md:text-base font-medium text-[#3C3C43] max-w-xl mx-auto">
+                  Hãy lia mắt đuổi theo chấm xanh vệ tinh hoặc nhìn giữ nút Nộp bài ngay bên dưới để hoàn tất bài thi.
                 </p>
               )}
             </div>
@@ -718,11 +689,11 @@ export function MCQBoard({
             {confirmAction.id === 'SUBMIT' ? (
               <div
                 ref={modalPursuitRef}
-                className="relative my-6 flex items-center justify-center w-48 h-48 rounded-full border-2 border-rose-500/60 bg-[#140E16]"
+                className="relative my-6 flex items-center justify-center w-48 h-48 rounded-full border-[3px] border-[#D70015] bg-[#FFECEB] shadow-[0_8px_24px_rgba(215,0,21,0.14),inset_0_1px_0_rgba(255,255,255,0.75)]"
               >
                 {/* Rotating Orbit Stimulus Dot */}
                 <div
-                  className="absolute w-6 h-6 rounded-full bg-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.85)] pointer-events-none"
+                  className="absolute w-6 h-6 rounded-full bg-[#0066CC] border-2 border-white pointer-events-none"
                   style={{
                     transform: `translate(${Math.cos(orbitAngle) * 56}px, ${Math.sin(orbitAngle) * 56}px)`,
                   }}
@@ -730,30 +701,30 @@ export function MCQBoard({
 
                 {/* Circular Pursuit Progress Readout */}
                 <div className="flex flex-col items-center justify-center">
-                  <span className="text-4xl font-bold text-rose-400 tabular-nums">
+                  <span className="text-4xl font-bold text-[#D70015] tabular-nums">
                     {Math.round(pursuitProgress * 100)}%
                   </span>
-                  <span className="text-[11px] font-semibold text-slate-400 tracking-wider uppercase mt-1">
+                  <span className="text-xs font-semibold text-[#D70015] mt-1">
                     Theo dấu mắt
                   </span>
                 </div>
               </div>
             ) : (
-              <div className="my-6 text-center text-slate-300 text-base md:text-lg">
-                Nhìn giữ vào ô <strong className="text-emerald-400 font-semibold">Đồng ý</strong> bên phải hoặc <strong className="text-rose-400 font-semibold">Không đồng ý</strong> bên trái
+              <div className="my-6 text-center text-[#3C3C43] text-base md:text-lg">
+                Nhìn giữ vào ô <strong className="text-[#12783D] font-semibold">Đồng ý</strong> bên phải hoặc <strong className="text-[#D70015] font-semibold">Không đồng ý</strong> bên trái
               </div>
             )}
 
             {/* Action Buttons Row */}
-            <div className="w-full grid grid-cols-2 gap-6 mt-2">
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mt-2">
               {/* Nút KHÔNG ĐỒNG Ý */}
               <div
                 ref={modalCancelRef}
                 onClick={() => handleConfirm(false)}
-                className={`relative cursor-pointer overflow-hidden rounded-2xl border-[1.5px] p-5 flex items-center justify-center gap-3 transition-colors ${
+                className={`relative min-h-[84px] cursor-pointer overflow-hidden rounded-[20px] px-5 py-4 flex items-center justify-between gap-4 transition-[border-color,background-color,box-shadow] duration-150 ${
                   isTargetActive('SAFE_MARGIN')
-                    ? 'border-rose-400 bg-[#221118]'
-                    : 'border-slate-700/80 bg-[#121620] hover:border-rose-500/60'
+                    ? 'border-2 border-[#D70015] bg-[#FFECEB] shadow-[0_12px_28px_-6px_rgba(215,0,21,0.20),inset_0_1px_0_rgba(255,255,255,0.85)]'
+                    : 'border-[1.5px] border-black/[0.10] bg-white/95 shadow-[0_4px_14px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] hover:border-[#D70015] hover:bg-[#FFECEB]'
                 }`}
               >
                 <GazeDwellSweep
@@ -761,26 +732,83 @@ export function MCQBoard({
                   progress={getDwellProgress('SAFE_MARGIN')}
                   tone="rose"
                 />
-                <span className="relative z-10 text-xl font-bold text-rose-400">✕</span>
-                <span className="relative z-10 text-xl font-bold text-slate-100">Không đồng ý</span>
+                <div className="relative z-10 flex items-center gap-3.5 min-w-0 flex-1">
+                  <div
+                    className={`size-12 rounded-[14px] flex items-center justify-center shrink-0 transition-colors ${
+                      isTargetActive('SAFE_MARGIN')
+                        ? 'bg-[#D70015] text-white'
+                        : 'bg-[#F2F2F7] text-[#1D1D1F]'
+                    }`}
+                  >
+                    <X className="h-6 w-6" strokeWidth={2.5} />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <span className="block text-lg md:text-xl font-bold text-[#1D1D1F] leading-tight whitespace-nowrap">
+                      Không đồng ý
+                    </span>
+                    <span className="block text-xs font-medium text-[#515154] mt-0.5 truncate">
+                      Quay lại tiếp tục làm bài
+                    </span>
+                  </div>
+                </div>
+                <div className="relative z-10 shrink-0">
+                  {isTargetActive('SAFE_MARGIN') ? (
+                    <span className="inline-flex items-center rounded-full bg-[#D70015] px-3 py-1 text-xs font-semibold text-white tabular-nums whitespace-nowrap">
+                      {`Đang giữ · ${Math.round(getDwellProgress('SAFE_MARGIN'))}%`}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-[#515154] whitespace-nowrap">Nhìn giữ để hủy</span>
+                  )}
+                </div>
               </div>
 
               {/* Nút ĐỒNG Ý (Hoặc Nộp bài ngay) */}
               {confirmAction.id === 'SUBMIT' ? (
                 <div
+                  ref={modalConfirmRef}
                   onClick={() => handleConfirm(true)}
-                  className="relative cursor-pointer overflow-hidden rounded-2xl border-[1.5px] border-rose-500/70 bg-[#1B1018] p-5 flex items-center justify-center gap-3 hover:border-rose-400 hover:bg-[#24131E] transition-colors"
+                  className={`relative min-h-[84px] cursor-pointer overflow-hidden rounded-[20px] px-5 py-4 flex items-center justify-between gap-4 transition-[border-color,background-color,box-shadow] duration-150 ${
+                    isTargetActive('NEXT')
+                      ? 'border-2 border-[#D70015] bg-[#FFDAD8] shadow-[0_12px_28px_-6px_rgba(215,0,21,0.25),inset_0_1px_0_rgba(255,255,255,0.85)]'
+                      : 'border-2 border-[#D70015] bg-[#FFECEB] shadow-[0_4px_14px_rgba(215,0,21,0.10),inset_0_1px_0_rgba(255,255,255,0.8)] hover:bg-[#FFDAD8]'
+                  }`}
                 >
-                  <span className="text-xl font-bold text-slate-100">Nộp bài ngay</span>
+                  <GazeDwellSweep
+                    active={isTargetActive('NEXT')}
+                    progress={getDwellProgress('NEXT')}
+                    tone="rose"
+                  />
+                  <div className="relative z-10 flex items-center gap-3.5 min-w-0 flex-1">
+                    <div className="size-12 rounded-[14px] bg-[#D70015] text-white flex items-center justify-center shrink-0">
+                      <Check className="h-6 w-6" strokeWidth={2.5} />
+                    </div>
+                    <div className="text-left min-w-0">
+                      <span className="block text-lg md:text-xl font-bold text-[#1D1D1F] leading-tight whitespace-nowrap">
+                        Nộp bài ngay
+                      </span>
+                      <span className="block text-xs font-medium text-[#991B1B] mt-0.5 truncate">
+                        Hoàn tất và gửi kết quả
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative z-10 shrink-0">
+                    {isTargetActive('NEXT') ? (
+                      <span className="inline-flex items-center rounded-full bg-[#D70015] px-3 py-1 text-xs font-semibold text-white tabular-nums whitespace-nowrap">
+                        {`Đang giữ · ${Math.round(getDwellProgress('NEXT'))}%`}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-[#991B1B] whitespace-nowrap">Nhìn giữ để nộp</span>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div
                   ref={modalConfirmRef}
                   onClick={() => handleConfirm(true)}
-                  className={`relative cursor-pointer overflow-hidden rounded-2xl border-[1.5px] p-5 flex items-center justify-center gap-3 transition-colors ${
+                  className={`relative min-h-[84px] cursor-pointer overflow-hidden rounded-[20px] px-5 py-4 flex items-center justify-between gap-4 transition-[border-color,background-color,box-shadow] duration-150 ${
                     isTargetActive('NEXT')
-                      ? 'border-emerald-400 bg-[#0F211B]'
-                      : 'border-slate-700/80 bg-[#121620] hover:border-emerald-500/60'
+                      ? 'border-2 border-[#12783D] bg-[#ECFDF3] shadow-[0_12px_28px_-6px_rgba(18,120,61,0.20),inset_0_1px_0_rgba(255,255,255,0.85)]'
+                      : 'border-[1.5px] border-black/[0.10] bg-white/95 shadow-[0_4px_14px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.95)] hover:border-[#12783D] hover:bg-[#ECFDF3]'
                   }`}
                 >
                   <GazeDwellSweep
@@ -788,8 +816,34 @@ export function MCQBoard({
                     progress={getDwellProgress('NEXT')}
                     tone="emerald"
                   />
-                  <span className="relative z-10 text-xl font-bold text-emerald-400">✓</span>
-                  <span className="relative z-10 text-xl font-bold text-slate-100">Đồng ý</span>
+                  <div className="relative z-10 flex items-center gap-3.5 min-w-0 flex-1">
+                    <div
+                      className={`size-12 rounded-[14px] flex items-center justify-center shrink-0 transition-colors ${
+                        isTargetActive('NEXT')
+                          ? 'bg-[#12783D] text-white'
+                          : 'bg-[#ECFDF3] text-[#12783D]'
+                      }`}
+                    >
+                      <Check className="h-6 w-6" strokeWidth={2.5} />
+                    </div>
+                    <div className="text-left min-w-0">
+                      <span className="block text-lg md:text-xl font-bold text-[#1D1D1F] leading-tight whitespace-nowrap">
+                        Đồng ý
+                      </span>
+                      <span className="block text-xs font-medium text-[#515154] mt-0.5 truncate">
+                        Xác nhận lựa chọn này
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative z-10 shrink-0">
+                    {isTargetActive('NEXT') ? (
+                      <span className="inline-flex items-center rounded-full bg-[#12783D] px-3 py-1 text-xs font-semibold text-white tabular-nums whitespace-nowrap">
+                        {`Đang giữ · ${Math.round(getDwellProgress('NEXT'))}%`}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-[#515154] whitespace-nowrap">Nhìn giữ để xác nhận</span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

@@ -5,9 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
-import { Card, CardHeader, CardContent, CardTitle, CardDescription } from '../ui/card';
+import { toast } from 'sonner';
+import { Card, CardHeader, CardContent, CardDescription } from '../ui/card';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -15,8 +15,8 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().email('Địa chỉ email không hợp lệ'),
+  password: z.string().min(1, 'Vui lòng nhập mật khẩu'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -33,6 +33,7 @@ export function LoginForm() {
     },
     onSuccess: (data) => {
       setAuth(data.access_token, data.user);
+      toast.success('Đăng nhập thành công');
       if (data.user.role === 'admin') {
         router.push('/admin');
       } else {
@@ -42,11 +43,14 @@ export function LoginForm() {
     onError: (err: unknown) => {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosError = err as { response?: { data?: { message?: string } } };
-        setError(axiosError.response?.data?.message || 'Failed to login');
+        setError(
+          axiosError.response?.data?.message ||
+            'Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.',
+        );
       } else {
-        setError('Failed to login');
+        setError('Đăng nhập thất bại. Vui lòng thử lại.');
       }
-    }
+    },
   });
 
   const {
@@ -63,66 +67,101 @@ export function LoginForm() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="flex min-h-screen items-center justify-center p-4 bg-background"
-    >
-      <Card className="w-full max-w-md shadow-lg border-t-4 border-t-primary">
-        <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold tracking-tight">Login</CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Sign in to access your dashboard
+    <main className="flex min-h-dvh items-center justify-center bg-transparent px-4 py-10 text-[#1D1D1F]">
+      <Card className="apple-glass-modal w-full max-w-[440px] rounded-[24px] p-2 ring-0">
+        <CardHeader className="space-y-3 px-6 pt-6 pb-2 text-left">
+          <div className="flex items-center gap-2.5">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 28 28"
+              className="size-7 shrink-0 text-[#0066CC]"
+              fill="none"
+            >
+              <circle cx="14" cy="14" r="12" stroke="currentColor" strokeWidth="2.25" />
+              <circle cx="14" cy="14" r="4.5" fill="currentColor" />
+            </svg>
+            <span className="text-base font-semibold tracking-[-0.01em] text-[#1D1D1F]">
+              EyeMotionDetect
+            </span>
+          </div>
+          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[#1D1D1F]">
+            Đăng nhập EyeMotionDetect
+          </h1>
+          <CardDescription className="text-base leading-relaxed text-[#3C3C43]">
+            Nhập tài khoản học viên hoặc quản trị để vào hệ thống thi điều khiển bằng mắt
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+
+        <CardContent className="px-6 pt-4 pb-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
             {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-100 rounded-md border border-red-200">
+              <div
+                role="alert"
+                className="rounded-xl border border-[#FFB8B5] bg-[#FFECEB] px-4 py-3 text-sm font-medium text-[#D70015]"
+              >
                 {error}
               </div>
             )}
+
             <div className="space-y-2">
-              <Label htmlFor="email" className="font-medium">Email</Label>
+              <Label htmlFor="email" className="text-sm font-semibold text-[#1D1D1F]">
+                Email
+              </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="email@example.com"
+                autoComplete="email"
+                placeholder="hocvien@eyemotion.edu.vn"
+                aria-invalid={Boolean(errors.email)}
                 {...register('email')}
-                className={errors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                className={`h-12 rounded-xl px-4 text-base md:text-base ${
+                  errors.email
+                    ? 'border-[#D70015] focus-visible:border-[#D70015]'
+                    : ''
+                }`}
               />
               {errors.email && (
-                <p className="text-sm text-red-500">{errors.email.message}</p>
+                <p role="alert" className="text-sm font-medium text-[#D70015]">
+                  {errors.email.message}
+                </p>
               )}
             </div>
-            
+
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="font-medium">Password</Label>
-              </div>
+              <Label htmlFor="password" className="text-sm font-semibold text-[#1D1D1F]">
+                Mật khẩu
+              </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                autoComplete="current-password"
+                placeholder="Nhập mật khẩu"
+                aria-invalid={Boolean(errors.password)}
                 {...register('password')}
-                className={errors.password ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                className={`h-12 rounded-xl px-4 text-base md:text-base ${
+                  errors.password
+                    ? 'border-[#D70015] focus-visible:border-[#D70015]'
+                    : ''
+                }`}
               />
               {errors.password && (
-                <p className="text-sm text-red-500">{errors.password.message}</p>
+                <p role="alert" className="text-sm font-medium text-[#D70015]">
+                  {errors.password.message}
+                </p>
               )}
             </div>
-            
+
             <Button
               type="submit"
-              className="w-full font-semibold mt-6"
+              size="lg"
+              className="mt-2 h-12 w-full rounded-[14px] text-base font-semibold"
               disabled={loginMutation.isPending}
             >
-              {loginMutation.isPending ? 'Signing in...' : 'Sign In'}
+              {loginMutation.isPending ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </Button>
           </form>
         </CardContent>
       </Card>
-    </motion.div>
+    </main>
   );
 }

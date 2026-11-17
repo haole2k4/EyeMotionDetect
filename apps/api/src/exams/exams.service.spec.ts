@@ -3,7 +3,11 @@ import { ExamsService } from './exams.service';
 import { Exam } from './entities/exam.entity';
 import { Question } from '../questions/question.entity';
 import { User } from '../users/user.entity';
-import { ExamSession, ExamStatus, GazeHeatmapPoint } from './entities/exam-session.entity';
+import {
+  ExamSession,
+  ExamStatus,
+  GazeHeatmapPoint,
+} from './entities/exam-session.entity';
 import { UserAnswer } from './entities/user-answer.entity';
 
 describe('ExamsService - Telemetry & Heatmap', () => {
@@ -27,13 +31,15 @@ describe('ExamsService - Telemetry & Heatmap', () => {
     };
 
     sessionRepo = {
-      findOne: jest.fn().mockImplementation((options: any) => {
-        if (options?.where?.id === 'session-1') {
-          return Promise.resolve(sampleSession);
-        }
-        return Promise.resolve(null);
-      }),
-      save: jest.fn(async (s) => s as ExamSession),
+      findOne: jest
+        .fn()
+        .mockImplementation((options?: { where?: { id?: string } }) => {
+          if (options?.where?.id === 'session-1') {
+            return Promise.resolve(sampleSession);
+          }
+          return Promise.resolve(null);
+        }),
+      save: jest.fn((s: ExamSession) => Promise.resolve(s)),
     };
 
     service = new ExamsService(

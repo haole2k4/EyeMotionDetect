@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { Check, Plus, Edit2, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 
 import {
@@ -22,12 +24,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -38,7 +43,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
@@ -51,6 +56,14 @@ export interface Question {
   createdAt: string;
   updatedAt: string;
 }
+
+const DIFFICULTY_LABELS: Record<QuestionDifficulty, string> = {
+  EASY: 'Dễ',
+  MEDIUM: 'Trung bình',
+  HARD: 'Khó',
+};
+
+const OPTION_LETTERS = ['A', 'B', 'C', 'D'] as const;
 
 const questionSchema = z.object({
   content: z.string().min(1, 'Nội dung câu hỏi không được để trống'),
@@ -65,6 +78,7 @@ export default function Questions() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [deletingQuestion, setDeletingQuestion] = useState<Question | null>(null);
 
   const {
     register,
@@ -84,7 +98,7 @@ export default function Questions() {
     },
   });
 
-  const { data: questions, isLoading } = useQuery<Question[]>({
+  const { data: questions, isLoading, isError } = useQuery<Question[]>({
     queryKey: ['questions'],
     queryFn: async () => {
       const res = await api.get('/questions');
@@ -96,7 +110,11 @@ export default function Questions() {
     mutationFn: (data: QuestionFormData) => api.post('/questions', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questions'] });
+      toast.success('Đã thêm câu hỏi vào ngân hàng.');
       closeDialog();
+    },
+    onError: () => {
+      toast.error('Không thể thêm câu hỏi. Vui lòng thử lại.');
     },
   });
 
@@ -104,13 +122,25 @@ export default function Questions() {
     mutationFn: (data: QuestionFormData) => api.patch(`/questions/${editingQuestion?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questions'] });
+      toast.success('Đã cập nhật câu hỏi.');
       closeDialog();
+    },
+    onError: () => {
+      toast.error('Không thể cập nhật câu hỏi. Vui lòng thử lại.');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/questions/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['questions'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['questions'] });
+      setDeletingQuestion(null);
+      toast.success('Đã xóa câu hỏi.');
+    },
+    onError: () => {
+      setDeletingQuestion(null);
+      toast.error('Không thể xóa câu hỏi. Vui lòng thử lại.');
+    },
   });
 
   const onSubmit = (data: QuestionFormData) => {
@@ -143,17 +173,10 @@ export default function Questions() {
     });
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Bạn có chắc chắn muốn xóa câu hỏi này?')) {
-      deleteMutation.mutate(id);
-    }
-  };
-
   const option0 = watch('options.0');
   const option1 = watch('options.1');
   const option2 = watch('options.2');
   const option3 = watch('options.3');
-  
   const currentAnswer = watch('correctAnswer');
 
   const normalizedOptions = useMemo(
@@ -171,62 +194,281 @@ export default function Questions() {
     }
   }, [currentAnswer, normalizedOptions, setValue]);
 
-  const answerOptions = normalizedOptions.filter((option) => option.length > 0);
-
-  if (isLoading) return <div className="p-8 text-muted-foreground">Đang tải danh sách câu hỏi...</div>;
+  const answerOptions = useMemo(
+    () => Array.from(new Set(normalizedOptions.filter((option) => option.length > 0))),
+    [normalizedOptions],
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Quản lý câu hỏi</h1>
-          <p className="text-sm text-muted-foreground">Tạo, cập nhật và gán đáp án đúng cho ngân hàng câu hỏi.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#1D1D1F]">
+            Quản lý câu hỏi
+          </h1>
+          <div className="mt-1 text-sm text-[#515154] tabular-nums">
+            {isLoading ? (
+              <Skeleton className="h-4 w-72" />
+            ) : (
+              <p>
+                Tạo, cập nhật và gán đáp án đúng cho {questions?.length ?? 0} câu hỏi trong ngân hàng.
+              </p>
+            )}
+          </div>
         </div>
-        <Button onClick={() => setIsDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Thêm câu hỏi
+
+        <Button
+          type="button"
+          onClick={() => setIsDialogOpen(true)}
+          className="h-10 px-4"
+        >
+          <Plus className="mr-1.5 size-4" />
+          Thêm câu hỏi
         </Button>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+      </div>
+
+      {isError ? (
+        <div className="rounded-2xl border border-[#FFB8B5] bg-[#FFECEB] px-4 py-3 text-sm font-medium text-[#D70015]">
+          Không thể tải danh sách câu hỏi từ máy chủ.
+        </div>
+      ) : null}
+
+      <div className="rounded-[20px] border border-black/[0.08] bg-white/95 overflow-hidden shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)]">
+        <Table className="w-full table-fixed">
+          <TableHeader className="bg-[#F5F5F7]/80">
+            <TableRow className="border-b border-black/[0.07] hover:bg-transparent">
+              <TableHead className="w-14 px-4 py-3 text-xs font-semibold text-[#3C3C43]">
+                STT
+              </TableHead>
+              <TableHead className="w-auto px-4 py-3 text-xs font-semibold text-[#3C3C43]">
+                Nội dung câu hỏi
+              </TableHead>
+              <TableHead className="w-32 px-4 py-3 text-xs font-semibold text-[#3C3C43]">
+                Độ khó
+              </TableHead>
+              <TableHead className="w-28 px-4 py-3 text-right text-xs font-semibold text-[#3C3C43]">
+                Thao tác
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 6 }).map((_, idx) => (
+                <TableRow key={idx} className="border-b border-black/[0.06] last:border-b-0">
+                  <TableCell className="px-4 py-3.5">
+                    <Skeleton className="h-4 w-6" />
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-4/5" />
+                      <Skeleton className="h-3.5 w-3/5" />
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5 text-right">
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <Skeleton className="size-8 rounded-[10px]" />
+                      <Skeleton className="size-8 rounded-[10px]" />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : questions?.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10 text-center text-sm text-[#515154]">
+                  Chưa có câu hỏi nào.
+                </TableCell>
+              </TableRow>
+            ) : (
+              questions?.map((q, idx) => (
+                <TableRow
+                  key={q.id}
+                  className="border-b border-black/[0.06] last:border-b-0 hover:bg-[#F5F5F7]/65 transition-colors"
+                >
+                  <TableCell className="px-4 py-3.5 text-sm text-[#515154] tabular-nums">
+                    {idx + 1}
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-[#1D1D1F]" title={q.content}>
+                        {q.content}
+                      </div>
+                      <div
+                        className="mt-1 truncate text-sm text-[#515154]"
+                        title={`${q.options.join(' | ')} (Đúng: ${q.correctAnswer})`}
+                      >
+                        {q.options.join(' | ')} (Đúng:{' '}
+                        <span className="font-semibold text-[#1D1D1F]">{q.correctAnswer}</span>)
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5">
+                    <span
+                      className={`inline-flex items-center justify-center min-w-[84px] rounded-full border px-2.5 py-0.5 text-xs font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] ${
+                        q.difficulty === 'EASY'
+                          ? 'bg-[#ECFDF3] text-[#12783D] border-[#86EFAC]'
+                          : q.difficulty === 'MEDIUM'
+                            ? 'bg-[#FFF8EB] text-[#9A4600] border-[#FCD34D]'
+                            : 'bg-[#FFECEB] text-[#D70015] border-[#FFB8B5]'
+                      }`}
+                    >
+                      {DIFFICULTY_LABELS[q.difficulty] ?? q.difficulty}
+                    </span>
+                  </TableCell>
+                  <TableCell className="px-4 py-3.5 text-right">
+                    <div className="inline-flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Sửa câu hỏi ${idx + 1}`}
+                        title="Sửa câu hỏi"
+                        onClick={() => openEditDialog(q)}
+                        className="text-[#3C3C43] hover:bg-black/[0.05] hover:text-[#1D1D1F]"
+                      >
+                        <Edit2 className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Xóa câu hỏi ${idx + 1}`}
+                        title="Xóa câu hỏi"
+                        onClick={() => setDeletingQuestion(q)}
+                        className="text-[#D70015] hover:bg-[#FFECEB] hover:text-[#D70015]"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Create / Edit Question Dialog */}
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
           if (!open) closeDialog();
           else setIsDialogOpen(true);
-        }}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingQuestion ? 'Sửa câu hỏi' : 'Thêm câu hỏi mới'}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 mt-4">
-              <div className="space-y-2">
-                <Label>Nội dung câu hỏi</Label>
-                <Input {...register('content')} placeholder="Nhập nội dung câu hỏi..." />
-                {errors.content && <p className="text-destructive text-sm">{errors.content.message}</p>}
-              </div>
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl w-[94vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-[#1D1D1F]">
+              {editingQuestion ? 'Sửa câu hỏi' : 'Thêm câu hỏi mới'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 mt-2">
+            <div className="space-y-2">
+              <Label htmlFor="question-content" className="text-sm font-medium text-[#1D1D1F]">
+                Nội dung câu hỏi
+              </Label>
+              <textarea
+                id="question-content"
+                rows={3}
+                {...register('content')}
+                placeholder="Nhập nội dung câu hỏi..."
+                className="min-h-[92px] w-full rounded-xl border border-black/[0.12] bg-white/90 px-3.5 py-2.5 text-sm leading-relaxed text-[#1D1D1F] shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-[border-color,background-color,box-shadow] focus:border-[#0066CC] focus:bg-white focus:ring-3 focus:ring-[#0066CC]/20"
+              />
+              {errors.content ? (
+                <p className="text-sm text-[#D70015]">{errors.content.message}</p>
+              ) : null}
+            </div>
 
-              <div className="space-y-4">
-                <Label>Các đáp án</Label>
-                {[0, 1, 2, 3].map((index) => (
-                  <div key={index} className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">Lựa chọn {index + 1}</Label>
-                    <div>
-                      <Input {...register(`options.${index}` as const)} placeholder={`Nhập đáp án ${index + 1}...`} />
-                      {errors.options?.[index] && <p className="text-destructive text-sm">{errors.options[index]?.message}</p>}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-sm font-medium text-[#1D1D1F]">Các đáp án</Label>
+                <span className="text-xs text-[#515154]">
+                  Nhấn &ldquo;Chọn đúng&rdquo; để gán trực tiếp đáp án đúng
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[0, 1, 2, 3].map((index) => {
+                  const letter = OPTION_LETTERS[index];
+                  const trimmedValue = normalizedOptions[index] ?? '';
+                  const isCorrect = trimmedValue.length > 0 && currentAnswer === trimmedValue;
+
+                  return (
+                    <div
+                      key={index}
+                      className={`rounded-2xl border p-3.5 space-y-2 transition-colors ${
+                        isCorrect
+                          ? 'border-[#0066CC] bg-[#E8F2FF]/65 shadow-[0_2px_8px_rgba(0,102,204,0.08)]'
+                          : 'border-black/[0.08] bg-[#F5F5F7]/70'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Label
+                          htmlFor={`question-option-${index}`}
+                          className="inline-flex items-center gap-2 text-xs font-semibold text-[#1D1D1F]"
+                        >
+                          <span
+                            className={`inline-flex size-5 items-center justify-center rounded-[7px] text-xs font-bold ${
+                              isCorrect
+                                ? 'bg-[#0066CC] text-white'
+                                : 'bg-white border border-black/[0.12] text-[#3C3C43]'
+                            }`}
+                          >
+                            {letter}
+                          </span>
+                          Đáp án {letter}
+                        </Label>
+
+                        <button
+                          type="button"
+                          disabled={!trimmedValue}
+                          onClick={() =>
+                            setValue('correctAnswer', trimmedValue, { shouldValidate: true })
+                          }
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                            isCorrect
+                              ? 'bg-[#0066CC] text-white'
+                              : 'border border-black/[0.12] bg-white text-[#3C3C43] hover:border-[#0066CC] hover:text-[#0066CC]'
+                          }`}
+                        >
+                          {isCorrect ? <Check className="size-3" /> : null}
+                          {isCorrect ? 'Đáp án đúng' : 'Chọn đúng'}
+                        </button>
+                      </div>
+
+                      <Input
+                        id={`question-option-${index}`}
+                        {...register(`options.${index}` as const)}
+                        placeholder={`Nhập đáp án ${letter}...`}
+                        className="bg-white"
+                      />
+                      {errors.options?.[index] ? (
+                        <p className="text-xs text-[#D70015]">
+                          {errors.options[index]?.message}
+                        </p>
+                      ) : null}
                     </div>
-                  </div>
-                ))}
-                {errors.correctAnswer && <p className="text-destructive text-sm">{errors.correctAnswer.message}</p>}
+                  );
+                })}
               </div>
+              {errors.correctAnswer ? (
+                <p className="text-sm text-[#D70015]">{errors.correctAnswer.message}</p>
+              ) : null}
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Đáp án đúng</Label>
+                <Label className="text-sm font-medium text-[#1D1D1F]">Đáp án đúng</Label>
                 <Controller
                   name="correctAnswer"
                   control={control}
                   render={({ field }) => (
                     <Select
-                      value={field.value || undefined}
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                      }}
+                      value={field.value || null}
+                      onValueChange={(value) => field.onChange(value ?? '')}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="w-full h-10 bg-white">
                         <SelectValue placeholder="Chọn đáp án đúng" />
                       </SelectTrigger>
                       <SelectContent>
@@ -239,19 +481,23 @@ export default function Questions() {
                     </Select>
                   )}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Bạn cần nhập nội dung đáp án trước khi có thể chọn đáp án đúng.
+                <p className="text-xs text-[#515154]">
+                  Có thể chọn trực tiếp ở trên hoặc từ danh sách này.
                 </p>
               </div>
 
-              <div className="max-w-52 space-y-2">
-                <Label>Độ khó</Label>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-[#1D1D1F]">Độ khó</Label>
                 <Controller
                   name="difficulty"
                   control={control}
                   render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger>
+                    <Select
+                      items={DIFFICULTY_LABELS}
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <SelectTrigger className="w-full h-10 bg-white">
                         <SelectValue placeholder="Chọn độ khó" />
                       </SelectTrigger>
                       <SelectContent>
@@ -262,78 +508,65 @@ export default function Questions() {
                     </Select>
                   )}
                 />
-                {errors.difficulty && <p className="text-destructive text-sm">{errors.difficulty.message}</p>}
+                {errors.difficulty ? (
+                  <p className="text-sm text-[#D70015]">{errors.difficulty.message}</p>
+                ) : null}
               </div>
+            </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={closeDialog}>Hủy</Button>
-                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingQuestion ? 'Cập nhật' : 'Thêm mới'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <div className="-mx-6 -mb-6 flex justify-end gap-2.5 rounded-b-[24px] border-t border-black/[0.07] bg-[#F5F5F7]/80 px-6 py-4 backdrop-blur-md">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeDialog}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
+                {editingQuestion ? 'Cập nhật' : 'Thêm mới'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách câu hỏi</CardTitle>
-          <CardDescription>{questions?.length || 0} câu hỏi trong ngân hàng hiện tại.</CardDescription>
-        </CardHeader>
-        <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">STT</TableHead>
-              <TableHead>Nội dung câu hỏi</TableHead>
-              <TableHead className="w-32">Độ khó</TableHead>
-              <TableHead className="w-24 text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {questions?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                  Chưa có câu hỏi nào.
-                </TableCell>
-              </TableRow>
-            ) : (
-              questions?.map((q, idx) => (
-                <TableRow key={q.id}>
-                  <TableCell>{idx + 1}</TableCell>
-                  <TableCell>
-                    <div className="font-medium">{q.content}</div>
-                    <div className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                      {q.options.join(' | ')} (Đúng: <span className="font-semibold">{q.correctAnswer}</span>)
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center justify-center min-w-[76px] rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      q.difficulty === 'EASY' 
-                        ? 'border border-emerald-500/30 bg-emerald-500/20 text-emerald-400' 
-                        : q.difficulty === 'MEDIUM'
-                        ? 'border border-amber-500/30 bg-amber-500/20 text-amber-400'
-                        : 'border border-rose-500/30 bg-rose-500/20 text-rose-400'
-                    }`}>
-                      {q.difficulty === 'EASY' ? 'Dễ' : q.difficulty === 'MEDIUM' ? 'Trung bình' : 'Khó'}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(q)}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(q.id)} className="text-destructive hover:text-destructive">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-        </CardContent>
-      </Card>
+      {/* Delete Confirmation AlertDialog */}
+      <AlertDialog
+        open={Boolean(deletingQuestion)}
+        onOpenChange={(open) => {
+          if (!open) setDeletingQuestion(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#1D1D1F]">
+              Xóa câu hỏi?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[#515154]">
+              Bạn có chắc chắn muốn xóa câu hỏi{' '}
+              <strong className="text-[#1D1D1F]">{deletingQuestion?.content}</strong>? Hành
+              động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingQuestion) deleteMutation.mutate(deletingQuestion.id);
+              }}
+              disabled={deleteMutation.isPending}
+              className="bg-none bg-[#D70015] text-white shadow-[0_2px_6px_rgba(215,0,21,0.28)] hover:bg-[#B80012]"
+            >
+              {deleteMutation.isPending ? 'Đang xóa...' : 'Xác nhận xóa'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

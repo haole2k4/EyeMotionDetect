@@ -159,7 +159,9 @@ export class WeightsService {
         typeof data.calibrationPoints !== 'number' ||
         !Number.isFinite(data.calibrationPoints)
       ) {
-        throw new BadRequestException('calibrationPoints must be a finite number');
+        throw new BadRequestException(
+          'calibrationPoints must be a finite number',
+        );
       }
 
       weights.calibrationPoints = Math.max(
@@ -177,7 +179,9 @@ export class WeightsService {
       ) {
         weights.lastMaePixels = data.lastMaePixels;
       } else {
-        throw new BadRequestException('lastMaePixels must be a finite number or null');
+        throw new BadRequestException(
+          'lastMaePixels must be a finite number or null',
+        );
       }
     }
 
@@ -223,9 +227,12 @@ export class WeightsService {
         throw new BadRequestException('mlpWeightsBin base64 payload is empty');
       }
 
-      const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+      const base64Pattern =
+        /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
       if (!base64Pattern.test(compact)) {
-        throw new BadRequestException('mlpWeightsBin must be a valid base64 string');
+        throw new BadRequestException(
+          'mlpWeightsBin must be a valid base64 string',
+        );
       }
 
       return Buffer.from(compact, 'base64');

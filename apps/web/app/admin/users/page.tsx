@@ -1,16 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2, Pencil, Plus, Search, Trash2, Accessibility, Eye, Sparkles, Volume2 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Loader2, Pencil, Plus, Search, Trash2, Accessibility, Eye, SlidersHorizontal, Volume2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 
@@ -113,7 +131,6 @@ export default function UsersManagement() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<DashboardUser | null>(null);
   const [deletingUser, setDeletingUser] = useState<DashboardUser | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const createForm = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserSchema),
@@ -168,10 +185,10 @@ export default function UsersManagement() {
         password: '',
         role: 'user',
       });
-      setErrorMessage(null);
+      toast.success('Đã tạo tài khoản người dùng mới.');
     },
     onError: (error: unknown) => {
-      setErrorMessage(getErrorMessage(error, 'Không thể tạo người dùng mới'));
+      toast.error(getErrorMessage(error, 'Không thể tạo người dùng mới'));
     },
   });
 
@@ -210,10 +227,8 @@ export default function UsersManagement() {
         updatePayload.password = trimmedPassword;
       }
 
-      // Update basic details and accessibility profile
       const response = await api.put(`/users/${id}`, updatePayload);
 
-      // Also ensure direct accessibility endpoint receives the update
       try {
         await api.put(`/users/${id}/accessibility`, accessibilityProfile);
       } catch (err) {
@@ -226,10 +241,10 @@ export default function UsersManagement() {
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setEditingUser(null);
       editForm.reset();
-      setErrorMessage(null);
+      toast.success('Đã cập nhật thông tin và hồ sơ trợ năng.');
     },
     onError: (error: unknown) => {
-      setErrorMessage(getErrorMessage(error, 'Không thể cập nhật người dùng'));
+      toast.error(getErrorMessage(error, 'Không thể cập nhật người dùng'));
     },
   });
 
@@ -241,10 +256,11 @@ export default function UsersManagement() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setDeletingUser(null);
-      setErrorMessage(null);
+      toast.success('Đã xóa tài khoản người dùng.');
     },
     onError: (error: unknown) => {
-      setErrorMessage(getErrorMessage(error, 'Không thể xóa người dùng'));
+      setDeletingUser(null);
+      toast.error(getErrorMessage(error, 'Không thể xóa người dùng'));
     },
   });
 
@@ -265,7 +281,6 @@ export default function UsersManagement() {
   const totalUsers = usersQuery.data?.length ?? 0;
 
   const openEditDialog = async (user: DashboardUser) => {
-    setErrorMessage(null);
     setEditingUser(user);
 
     let profile = user.accessibilityProfile || defaultAccessibility;
@@ -293,7 +308,6 @@ export default function UsersManagement() {
   };
 
   const handleCreateUser = (values: CreateUserFormValues) => {
-    setErrorMessage(null);
     createUserMutation.mutate(values);
   };
 
@@ -302,7 +316,6 @@ export default function UsersManagement() {
       return;
     }
 
-    setErrorMessage(null);
     updateUserMutation.mutate({
       id: editingUser.id,
       payload: values,
@@ -314,266 +327,318 @@ export default function UsersManagement() {
       return;
     }
 
-    setErrorMessage(null);
     deleteUserMutation.mutate(deletingUser.id);
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý người dùng</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Quản lý tài khoản, phân quyền và cấu hình hồ sơ trợ năng (Accessibility Profile) cho học viên.
+          <h1 className="text-2xl font-semibold tracking-tight text-[#1D1D1F]">
+            Quản lý người dùng
+          </h1>
+          <p className="mt-1 text-sm text-[#515154]">
+            Quản lý tài khoản, phân quyền và cấu hình hồ sơ trợ năng cho học viên.
           </p>
         </div>
 
         <Button
           type="button"
-          onClick={() => {
-            setErrorMessage(null);
-            setIsCreateDialogOpen(true);
-          }}
-          className="h-10 rounded-xl bg-blue-600 px-4 text-white hover:bg-blue-700"
+          onClick={() => setIsCreateDialogOpen(true)}
+          className="h-10 px-4"
         >
-          <Plus className="size-4" />
+          <Plus className="size-4 mr-1.5" />
           Thêm người dùng
         </Button>
       </div>
 
-      {errorMessage ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-          {errorMessage}
-        </div>
-      ) : null}
-
       {queryErrorMessage ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+        <div className="rounded-2xl border border-[#FFB8B5] bg-[#FFECEB] px-4 py-3 text-sm font-medium text-[#D70015]">
           {queryErrorMessage}
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+      {/* Acrylic Filter Bar */}
+      <div className="apple-glass flex flex-col gap-3 rounded-2xl p-4 md:flex-row md:items-center md:justify-between">
         <div className="relative w-full max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#515154]" />
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
             placeholder="Tìm theo tên đăng nhập hoặc email"
-            className="h-10 rounded-xl border-gray-200 pl-9"
+            className="h-10 bg-white pl-9"
           />
         </div>
 
-        <p className="text-sm font-medium text-muted-foreground">
+        <p className="text-sm font-medium text-[#515154] tabular-nums">
           Hiển thị {filteredUsers.length}/{totalUsers} người dùng
         </p>
       </div>
 
-      <Card className="rounded-2xl border border-border bg-card shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full whitespace-nowrap text-left text-sm">
-            <thead className="border-b border-border bg-muted/30 text-muted-foreground">
-              <tr>
-                <th className="px-6 py-4 font-semibold">Email</th>
-                <th className="px-6 py-4 font-semibold">Tên đăng nhập</th>
-                <th className="px-6 py-4 font-semibold">Vai trò</th>
-                <th className="px-6 py-4 font-semibold">Cấu hình Trợ năng</th>
-                <th className="px-6 py-4 font-semibold">Hiệu chuẩn</th>
-                <th className="px-6 py-4 font-semibold">Ngày tham gia</th>
-                <th className="px-6 py-4 font-semibold">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {usersQuery.isPending ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="size-4 animate-spin" />
-                      Đang tải danh sách người dùng...
-                    </span>
-                  </td>
-                </tr>
-              ) : null}
+      {/* Apple Grouped Table */}
+      <div className="rounded-[20px] border border-black/[0.08] bg-white/95 overflow-hidden shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05),0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.95)]">
+        <Table className="w-full table-fixed">
+          <TableHeader className="bg-[#F5F5F7]/80">
+            <TableRow className="border-b border-black/[0.07] hover:bg-transparent">
+              <TableHead className="w-[17%] px-3.5 py-3 text-[13px] font-semibold text-[#3C3C43]">
+                Email
+              </TableHead>
+              <TableHead className="w-[11%] px-3 py-3 text-[13px] font-semibold text-[#3C3C43]">
+                Tên đăng nhập
+              </TableHead>
+              <TableHead className="w-[13%] px-3 py-3 text-[13px] font-semibold text-[#3C3C43]">
+                Vai trò
+              </TableHead>
+              <TableHead className="w-[20%] px-3 py-3 text-[13px] font-semibold text-[#3C3C43]">
+                Cấu hình trợ năng
+              </TableHead>
+              <TableHead className="w-[13%] px-3 py-3 text-[13px] font-semibold text-[#3C3C43]">
+                Hiệu chuẩn
+              </TableHead>
+              <TableHead className="w-[10%] px-3 py-3 text-[13px] font-semibold text-[#3C3C43]">
+                Ngày tham gia
+              </TableHead>
+              <TableHead className="w-[16%] px-3 py-3 text-right text-[13px] font-semibold text-[#3C3C43]">
+                Thao tác
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {usersQuery.isPending
+              ? Array.from({ length: 6 }).map((_, idx) => (
+                  <TableRow key={idx} className="border-b border-black/[0.06] last:border-b-0">
+                    <TableCell className="px-3.5 py-3.5">
+                      <Skeleton className="h-4 w-4/5" />
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <Skeleton className="h-6 w-20 rounded-full" />
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-3.5 w-36" />
+                        <Skeleton className="h-3.5 w-32" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <Skeleton className="h-6 w-24 rounded-full" />
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5">
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
+                    <TableCell className="px-3 py-3.5 text-right">
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        <Skeleton className="h-8 w-14 rounded-[10px]" />
+                        <Skeleton className="h-8 w-14 rounded-[10px]" />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              : null}
 
-              {usersQuery.isError ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-rose-600">
-                    Không thể tải dữ liệu từ server.
-                  </td>
-                </tr>
-              ) : null}
+            {usersQuery.isError ? (
+              <TableRow>
+                <TableCell colSpan={7} className="px-4 py-10 text-center text-sm text-[#D70015]">
+                  Không thể tải dữ liệu từ máy chủ.
+                </TableCell>
+              </TableRow>
+            ) : null}
 
-              {usersQuery.isSuccess && filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
-                    Không tìm thấy người dùng phù hợp.
-                  </td>
-                </tr>
-              ) : null}
+            {usersQuery.isSuccess && filteredUsers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="px-4 py-10 text-center text-sm text-[#515154]">
+                  Không tìm thấy người dùng phù hợp.
+                </TableCell>
+              </TableRow>
+            ) : null}
 
-              {usersQuery.isSuccess
-                ? filteredUsers.map((user, index) => {
-                    const prof = user.accessibilityProfile;
-                    return (
-                      <motion.tr
-                        key={user.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.04 }}
-                        className="hover:bg-blue-50/30"
-                      >
-                        <td className="px-6 py-4 font-semibold text-foreground">{user.email}</td>
-                        <td className="px-6 py-4 text-foreground">{user.username}</td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`rounded-md px-3 py-1 text-xs font-semibold ${
-                              user.role === 'admin'
-                                ? 'bg-purple-500/20 text-purple-400'
-                                : 'bg-slate-500/20 text-slate-300'
-                            }`}
+            {usersQuery.isSuccess
+              ? filteredUsers.map((user) => {
+                  const prof = user.accessibilityProfile;
+                  const triggerLabel =
+                    prof?.triggerMode === 'blink'
+                      ? `Nhắm mắt (${prof.blinkDurationMs || 350} ms)`
+                      : `Nhìn giữ Dwell (${prof?.dwellTimeMs || 1000} ms)`;
+                  const assistiveLabel = `Hút từ tính: ${Math.round((prof?.magneticStrength ?? 0.7) * 100)}% | TTS: ${prof?.ttsEnabled !== false ? 'Bật' : 'Tắt'}`;
+
+                  return (
+                    <TableRow
+                      key={user.id}
+                      className="border-b border-black/[0.06] last:border-b-0 hover:bg-[#F5F5F7]/65 transition-colors"
+                    >
+                      <TableCell className="px-3.5 py-3.5 font-medium text-[#1D1D1F]">
+                        <div className="truncate" title={user.email}>
+                          {user.email}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-3 py-3.5 text-[#3C3C43]">
+                        <div className="truncate" title={user.username}>
+                          {user.username}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-3 py-3.5">
+                        <span
+                          className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] ${
+                            user.role === 'admin'
+                              ? 'bg-[#E8F2FF] text-[#0066CC] border-[#BFDBFE]'
+                              : 'bg-[#F2F2F7] text-[#3C3C43] border-black/[0.08]'
+                          }`}
+                        >
+                          {user.role === 'admin' ? 'Quản trị viên' : 'Học viên'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-3 py-3.5">
+                        <div className="min-w-0 flex flex-col gap-0.5 text-[13px]">
+                          <div
+                            className="flex items-center gap-1.5 font-medium text-[#1D1D1F] tabular-nums min-w-0"
+                            title={triggerLabel}
                           >
-                            {user.role === 'admin' ? 'Quản trị viên' : 'Học viên'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1 text-xs">
-                            <span className="inline-flex items-center gap-1.5 font-medium text-slate-300">
-                              <Eye className="size-3 text-cyan-400" />
-                              {prof?.triggerMode === 'blink'
-                                ? `Nhắm mắt (${prof.blinkDurationMs || 350}ms)`
-                                : `Nhìn giữ Dwell (${prof?.dwellTimeMs || 1000}ms)`}
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                              <Sparkles className="size-3 text-amber-400" />
-                              Hút từ tính: {Math.round((prof?.magneticStrength ?? 0.7) * 100)}% | TTS: {prof?.ttsEnabled !== false ? 'Bật' : 'Tắt'}
-                            </span>
+                            <Eye className="size-3.5 shrink-0 text-[#0066CC]" />
+                            <span className="truncate">{triggerLabel}</span>
                           </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`rounded-md border px-3 py-1 text-xs font-semibold ${
-                              user.calibrated
-                                ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-400'
-                                : 'border-rose-500/30 bg-rose-500/20 text-rose-400'
-                            }`}
+                          <div
+                            className="flex items-center gap-1.5 text-[#515154] tabular-nums min-w-0"
+                            title={assistiveLabel}
                           >
-                            {user.calibrated ? 'Đã thiết lập' : 'Chưa thiết lập'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground">
-                          {new Date(user.createdAt).toLocaleDateString('vi-VN')}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEditDialog(user)}
-                              disabled={updateUserMutation.isPending}
-                              className="rounded-lg"
-                            >
-                              <Pencil className="size-3.5" />
-                              Sửa
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                setErrorMessage(null);
-                                setDeletingUser(user);
-                              }}
-                              disabled={deleteUserMutation.isPending}
-                              className="rounded-lg"
-                            >
-                              <Trash2 className="size-3.5" />
-                              Xóa
-                            </Button>
+                            <SlidersHorizontal className="size-3.5 shrink-0 text-[#515154]" />
+                            <span className="truncate">{assistiveLabel}</span>
                           </div>
-                        </td>
-                      </motion.tr>
-                    );
-                  })
-                : null}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-3 py-3.5">
+                        <span
+                          className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] ${
+                            user.calibrated
+                              ? 'bg-[#ECFDF3] text-[#12783D] border-[#86EFAC]'
+                              : 'bg-[#FFECEB] text-[#D70015] border-[#FFB8B5]'
+                          }`}
+                        >
+                          {user.calibrated ? 'Đã thiết lập' : 'Chưa thiết lập'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-3 py-3.5 text-[13px] text-[#515154] tabular-nums whitespace-nowrap">
+                        {new Date(user.createdAt).toLocaleDateString('vi-VN')}
+                      </TableCell>
+                      <TableCell className="px-3 py-3.5 text-right">
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEditDialog(user)}
+                            disabled={updateUserMutation.isPending}
+                            className="h-8 px-2.5"
+                          >
+                            <Pencil className="size-3.5 mr-1" />
+                            Sửa
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeletingUser(user)}
+                            disabled={deleteUserMutation.isPending}
+                            className="h-8 px-2.5"
+                          >
+                            <Trash2 className="size-3.5 mr-1" />
+                            Xóa
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              : null}
+          </TableBody>
+        </Table>
+      </div>
 
       {/* Dialog Tạo người dùng */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Thêm người dùng mới</DialogTitle>
-            <DialogDescription>
-              Tạo tài khoản để học viên bắt đầu sử dụng hệ thống theo dõi mắt.
+            <DialogTitle className="text-lg font-semibold text-[#1D1D1F]">
+              Thêm người dùng mới
+            </DialogTitle>
+            <DialogDescription className="text-sm text-[#515154]">
+              Tạo tài khoản để học viên bắt đầu sử dụng hệ thống theo dõi ánh mắt.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={createForm.handleSubmit(handleCreateUser)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="create-user-username">Tên đăng nhập</Label>
+              <Label htmlFor="create-user-username" className="text-sm font-medium text-[#1D1D1F]">
+                Tên đăng nhập
+              </Label>
               <Input
                 id="create-user-username"
                 type="text"
-                placeholder="vd: test_user_01"
+                placeholder="vd: hocvien_01"
                 {...createForm.register('username')}
-                className={createForm.formState.errors.username ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+                className={`bg-white ${
+                  createForm.formState.errors.username ? 'border-[#D70015]' : ''
+                }`}
               />
               {createForm.formState.errors.username ? (
-                <p className="text-sm font-medium text-rose-600">
+                <p className="text-sm font-medium text-[#D70015]">
                   {createForm.formState.errors.username.message}
                 </p>
               ) : null}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="create-user-email">Email</Label>
+              <Label htmlFor="create-user-email" className="text-sm font-medium text-[#1D1D1F]">
+                Email
+              </Label>
               <Input
                 id="create-user-email"
                 type="email"
-                placeholder="user@example.com"
+                placeholder="hocvien@eyemotion.edu.vn"
                 {...createForm.register('email')}
-                className={createForm.formState.errors.email ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+                className={`bg-white ${
+                  createForm.formState.errors.email ? 'border-[#D70015]' : ''
+                }`}
               />
               {createForm.formState.errors.email ? (
-                <p className="text-sm font-medium text-rose-600">
+                <p className="text-sm font-medium text-[#D70015]">
                   {createForm.formState.errors.email.message}
                 </p>
               ) : null}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="create-user-password">Mật khẩu</Label>
+              <Label htmlFor="create-user-password" className="text-sm font-medium text-[#1D1D1F]">
+                Mật khẩu
+              </Label>
               <Input
                 id="create-user-password"
                 type="password"
                 placeholder="Tối thiểu 6 ký tự"
                 {...createForm.register('password')}
-                className={createForm.formState.errors.password ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+                className={`bg-white ${
+                  createForm.formState.errors.password ? 'border-[#D70015]' : ''
+                }`}
               />
               {createForm.formState.errors.password ? (
-                <p className="text-sm font-medium text-rose-600">
+                <p className="text-sm font-medium text-[#D70015]">
                   {createForm.formState.errors.password.message}
                 </p>
               ) : null}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="create-user-role">Vai trò</Label>
+              <Label htmlFor="create-user-role" className="text-sm font-medium text-[#1D1D1F]">
+                Vai trò
+              </Label>
               <select
                 id="create-user-role"
                 {...createForm.register('role')}
-                className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
+                className="h-10 w-full rounded-xl border border-black/[0.12] bg-white px-3 text-sm text-[#1D1D1F] shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-colors focus:border-[#0066CC] focus:ring-3 focus:ring-[#0066CC]/20"
               >
-                <option value="user" className="bg-card text-foreground">Học viên</option>
-                <option value="admin" className="bg-card text-foreground">Quản trị viên</option>
+                <option value="user">Học viên</option>
+                <option value="admin">Quản trị viên</option>
               </select>
             </div>
 
@@ -585,10 +650,13 @@ export default function UsersManagement() {
               >
                 Hủy
               </Button>
-              <Button type="submit" disabled={createUserMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={createUserMutation.isPending}
+              >
                 {createUserMutation.isPending ? (
                   <>
-                    <Loader2 className="size-4 animate-spin" />
+                    <Loader2 className="size-4 mr-1.5 animate-spin" />
                     Đang tạo...
                   </>
                 ) : (
@@ -612,11 +680,11 @@ export default function UsersManagement() {
       >
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Accessibility className="size-5 text-blue-500" />
-              Chỉnh sửa người dùng & Hồ sơ Trợ năng
+            <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-[#1D1D1F]">
+              <Accessibility className="size-5 text-[#0066CC]" />
+              Chỉnh sửa người dùng & Hồ sơ trợ năng
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-sm text-[#515154]">
               Cấu hình tài khoản và thiết lập tương tác bằng cử chỉ mắt cá nhân hóa cho học viên.
             </DialogDescription>
           </DialogHeader>
@@ -625,98 +693,117 @@ export default function UsersManagement() {
             {/* Account Details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-user-username">Tên đăng nhập</Label>
+                <Label htmlFor="edit-user-username" className="text-sm font-medium text-[#1D1D1F]">
+                  Tên đăng nhập
+                </Label>
                 <Input
                   id="edit-user-username"
                   type="text"
                   {...editForm.register('username')}
-                  className={editForm.formState.errors.username ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+                  className={`bg-white ${
+                    editForm.formState.errors.username ? 'border-[#D70015]' : ''
+                  }`}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-user-email">Email</Label>
+                <Label htmlFor="edit-user-email" className="text-sm font-medium text-[#1D1D1F]">
+                  Email
+                </Label>
                 <Input
                   id="edit-user-email"
                   type="email"
                   {...editForm.register('email')}
-                  className={editForm.formState.errors.email ? 'border-rose-400 focus-visible:ring-rose-400/30' : ''}
+                  className={`bg-white ${
+                    editForm.formState.errors.email ? 'border-[#D70015]' : ''
+                  }`}
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-user-password">Mật khẩu mới (tùy chọn)</Label>
+                <Label htmlFor="edit-user-password" className="text-sm font-medium text-[#1D1D1F]">
+                  Mật khẩu mới (tùy chọn)
+                </Label>
                 <Input
                   id="edit-user-password"
                   type="password"
                   placeholder="Để trống nếu không đổi"
                   {...editForm.register('password')}
+                  className="bg-white"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-user-role">Vai trò</Label>
+                <Label htmlFor="edit-user-role" className="text-sm font-medium text-[#1D1D1F]">
+                  Vai trò
+                </Label>
                 <select
                   id="edit-user-role"
                   {...editForm.register('role')}
-                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20"
+                  className="h-10 w-full rounded-xl border border-black/[0.12] bg-white px-3 text-sm text-[#1D1D1F] shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-colors focus:border-[#0066CC] focus:ring-3 focus:ring-[#0066CC]/20"
                 >
-                  <option value="user" className="bg-card text-foreground">Học viên</option>
-                  <option value="admin" className="bg-card text-foreground">Quản trị viên</option>
+                  <option value="user">Học viên</option>
+                  <option value="admin">Quản trị viên</option>
                 </select>
               </div>
             </div>
 
             {/* Accessibility Profile Section */}
-            <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-4 space-y-4">
-              <h3 className="text-sm font-bold text-cyan-300 flex items-center gap-2 uppercase tracking-wide">
-                <Sparkles className="size-4 text-cyan-400" />
-                Cấu hình Hồ sơ Trợ năng (Accessibility Profile)
+            <div className="rounded-2xl border border-black/[0.08] bg-[#F5F5F7]/75 p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-[#1D1D1F] flex items-center gap-2">
+                <SlidersHorizontal className="size-4 text-[#0066CC]" />
+                Cấu hình hồ sơ trợ năng (Accessibility Profile)
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Dominant Eye */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="edit-user-dominantEye" className="text-xs font-semibold">
-                    Mắt chủ đạo (Dominant Eye)
+                  <Label
+                    htmlFor="edit-user-dominantEye"
+                    className="text-xs font-semibold text-[#3C3C43]"
+                  >
+                    Mắt chủ đạo
                   </Label>
                   <select
                     id="edit-user-dominantEye"
                     {...editForm.register('dominantEye')}
-                    className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs outline-none focus:border-cyan-500"
+                    className="h-10 w-full rounded-xl border border-black/[0.12] bg-white px-3 text-sm text-[#1D1D1F] outline-none focus:border-[#0066CC]"
                   >
-                    <option value="both">Cả hai mắt (Both Eyes)</option>
-                    <option value="left">Chỉ mắt trái (Left Eye Only)</option>
-                    <option value="right">Chỉ mắt phải (Right Eye Only)</option>
+                    <option value="both">Cả hai mắt</option>
+                    <option value="left">Chỉ mắt trái</option>
+                    <option value="right">Chỉ mắt phải</option>
                   </select>
                 </div>
 
-                {/* Trigger Mode */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="edit-user-triggerMode" className="text-xs font-semibold">
-                    Phương thức kích hoạt (Trigger Mode)
+                  <Label
+                    htmlFor="edit-user-triggerMode"
+                    className="text-xs font-semibold text-[#3C3C43]"
+                  >
+                    Phương thức kích hoạt
                   </Label>
                   <select
                     id="edit-user-triggerMode"
                     {...editForm.register('triggerMode')}
-                    className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs outline-none focus:border-cyan-500"
+                    className="h-10 w-full rounded-xl border border-black/[0.12] bg-white px-3 text-sm text-[#1D1D1F] outline-none focus:border-[#0066CC]"
                   >
                     <option value="dwell">Nhìn giữ Dwell-time</option>
-                    <option value="blink">Nhắm mắt chủ đích (Intentional Blink)</option>
+                    <option value="blink">Nhắm mắt chủ đích</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Dwell Time */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <Label htmlFor="edit-user-dwellTimeMs" className="font-semibold">
-                      Thời gian nhìn giữ (Dwell Time)
+                    <Label
+                      htmlFor="edit-user-dwellTimeMs"
+                      className="font-semibold text-[#3C3C43]"
+                    >
+                      Thời gian nhìn giữ
                     </Label>
-                    <span className="text-cyan-400 font-mono font-bold">
+                    <span className="font-semibold tabular-nums text-[#0066CC]">
                       {editForm.watch('dwellTimeMs')} ms
                     </span>
                   </div>
@@ -727,18 +814,22 @@ export default function UsersManagement() {
                     max="2000"
                     step="50"
                     {...editForm.register('dwellTimeMs')}
-                    className="h-2 cursor-pointer bg-slate-800"
+                    className="h-2 cursor-pointer bg-[#E5E5EA] accent-[#0066CC]"
                   />
-                  <p className="text-[11px] text-muted-foreground">Khoảng khuyến nghị: 800ms - 1500ms</p>
+                  <p className="text-xs text-[#515154] tabular-nums">
+                    Khuyến nghị: 800 ms – 1500 ms
+                  </p>
                 </div>
 
-                {/* Blink Duration */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <Label htmlFor="edit-user-blinkDurationMs" className="font-semibold">
-                      Thời gian nhắm mắt (Blink Duration)
+                    <Label
+                      htmlFor="edit-user-blinkDurationMs"
+                      className="font-semibold text-[#3C3C43]"
+                    >
+                      Thời gian nhắm mắt
                     </Label>
-                    <span className="text-cyan-400 font-mono font-bold">
+                    <span className="font-semibold tabular-nums text-[#0066CC]">
                       {editForm.watch('blinkDurationMs')} ms
                     </span>
                   </div>
@@ -749,20 +840,24 @@ export default function UsersManagement() {
                     max="800"
                     step="25"
                     {...editForm.register('blinkDurationMs')}
-                    className="h-2 cursor-pointer bg-slate-800"
+                    className="h-2 cursor-pointer bg-[#E5E5EA] accent-[#0066CC]"
                   />
-                  <p className="text-[11px] text-muted-foreground">Khoảng khuyến nghị: 250ms - 450ms</p>
+                  <p className="text-xs text-[#515154] tabular-nums">
+                    Khuyến nghị: 250 ms – 450 ms
+                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                {/* Magnetic Strength */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <Label htmlFor="edit-user-magneticStrength" className="font-semibold">
-                      Lực hút con trỏ từ tính (Magnetic Snap)
+                    <Label
+                      htmlFor="edit-user-magneticStrength"
+                      className="font-semibold text-[#3C3C43]"
+                    >
+                      Lực hút con trỏ từ tính
                     </Label>
-                    <span className="text-cyan-400 font-mono font-bold">
+                    <span className="font-semibold tabular-nums text-[#0066CC]">
                       {Math.round(editForm.watch('magneticStrength') * 100)}%
                     </span>
                   </div>
@@ -773,26 +868,28 @@ export default function UsersManagement() {
                     max="1"
                     step="0.05"
                     {...editForm.register('magneticStrength')}
-                    className="h-2 cursor-pointer bg-slate-800"
+                    className="h-2 cursor-pointer bg-[#E5E5EA] accent-[#0066CC]"
                   />
                 </div>
 
-                {/* TTS Toggle */}
-                <div className="flex items-center justify-between p-2 rounded-lg border border-border bg-background">
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="size-4 text-cyan-400" />
+                <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-black/[0.08] bg-white">
+                  <div className="flex items-center gap-2.5">
+                    <Volume2 className="size-4 text-[#0066CC]" />
                     <div>
-                      <Label htmlFor="edit-user-ttsEnabled" className="text-xs font-semibold cursor-pointer">
+                      <Label
+                        htmlFor="edit-user-ttsEnabled"
+                        className="text-xs font-semibold text-[#1D1D1F] cursor-pointer"
+                      >
                         Đọc đề tự động (TTS)
                       </Label>
-                      <p className="text-[10px] text-muted-foreground">Tự động phát âm câu hỏi vi-VN</p>
+                      <p className="text-xs text-[#515154]">Phát âm câu hỏi vi-VN</p>
                     </div>
                   </div>
                   <input
                     id="edit-user-ttsEnabled"
                     type="checkbox"
                     {...editForm.register('ttsEnabled')}
-                    className="size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    className="size-4 rounded border-black/[0.2] accent-[#0066CC] cursor-pointer"
                   />
                 </div>
               </div>
@@ -806,10 +903,13 @@ export default function UsersManagement() {
               >
                 Hủy
               </Button>
-              <Button type="submit" disabled={updateUserMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={updateUserMutation.isPending}
+              >
                 {updateUserMutation.isPending ? (
                   <>
-                    <Loader2 className="size-4 animate-spin" />
+                    <Loader2 className="size-4 mr-1.5 animate-spin" />
                     Đang lưu...
                   </>
                 ) : (
@@ -821,49 +921,39 @@ export default function UsersManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Xóa người dùng */}
-      <Dialog
+      {/* AlertDialog Xóa người dùng */}
+      <AlertDialog
         open={Boolean(deletingUser)}
         onOpenChange={(open) => {
-          if (!open) {
-            setDeletingUser(null);
-          }
+          if (!open) setDeletingUser(null);
         }}
       >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Xóa người dùng</DialogTitle>
-            <DialogDescription>
-              Bạn có chắc muốn xóa tài khoản {deletingUser?.email}? Hành động này không thể hoàn tác.
-            </DialogDescription>
-          </DialogHeader>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#1D1D1F]">
+              Xóa người dùng?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[#515154]">
+              Bạn có chắc chắn muốn xóa tài khoản{' '}
+              <strong className="text-[#1D1D1F]">{deletingUser?.email}</strong>? Hành động này
+              không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDeletingUser(null)}
-            >
+          <AlertDialogFooter>
+            <AlertDialogCancel>
               Hủy
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
+            </AlertDialogCancel>
+            <AlertDialogAction
               onClick={handleDeleteUser}
               disabled={deleteUserMutation.isPending}
+              className="bg-none bg-[#D70015] text-white shadow-[0_2px_6px_rgba(215,0,21,0.28)] hover:bg-[#B80012]"
             >
-              {deleteUserMutation.isPending ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Đang xóa...
-                </>
-              ) : (
-                'Xác nhận xóa'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </motion.div>
+              {deleteUserMutation.isPending ? 'Đang xóa...' : 'Xác nhận xóa'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }

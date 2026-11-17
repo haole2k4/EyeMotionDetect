@@ -30,7 +30,7 @@ describe('WeightsService', () => {
     repo = {
       findOne: jest.fn().mockResolvedValue(persisted),
       create: jest.fn(),
-      save: jest.fn(async (value) => value),
+      save: jest.fn((value: GazeWeights) => Promise.resolve(value)),
       findAndCount: jest.fn(),
     } as unknown as jest.Mocked<MockRepo>;
 

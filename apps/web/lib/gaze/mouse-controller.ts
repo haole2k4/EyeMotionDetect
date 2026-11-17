@@ -2,6 +2,10 @@
 
 export class WebCursorController {
   private cursorEl: HTMLElement | null = null;
+  private dotEl: HTMLElement | null = null;
+  private isFlashing = false;
+  private lastSnapped = false;
+  private flashTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -10,18 +14,22 @@ export class WebCursorController {
         existing.remove();
       }
 
-      this.cursorEl = document.createElement('div');
-      this.cursorEl.id = 'gaze-cursor';
-      this.cursorEl.style.cssText = `
+      const cursor = document.createElement('div');
+      cursor.id = 'gaze-cursor';
+      cursor.style.cssText = `
         position: fixed;
         left: 0;
         top: 0;
-        width: 36px;
-        height: 36px;
+        width: 40px;
+        height: 40px;
+        box-sizing: border-box;
         border-radius: 50%;
-        background: radial-gradient(circle, rgba(56, 189, 248, 0.55) 0%, rgba(56, 189, 248, 0.15) 60%, transparent 100%);
-        border: 2px solid rgba(56, 189, 248, 0.8);
-        box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 82, 255, 0.12);
+        border: 2.5px solid #0052FF;
+        outline: 2px solid #FFFFFF;
         pointer-events: none;
         z-index: 99999;
         will-change: transform;
@@ -30,37 +38,75 @@ export class WebCursorController {
         visibility: hidden;
         transform: translate3d(-100px, -100px, 0);
       `;
-      document.body.appendChild(this.cursorEl);
+
+      const dot = document.createElement('span');
+      dot.style.cssText = `
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #0052FF;
+        pointer-events: none;
+      `;
+
+      cursor.appendChild(dot);
+      document.body.appendChild(cursor);
+      this.cursorEl = cursor;
+      this.dotEl = dot;
     }
   }
 
-  moveTo(x: number, y: number, isSnapped = false): void {
-    if (this.cursorEl) {
-      const scale = isSnapped ? 1.25 : 1.0;
-      this.cursorEl.style.opacity = '1';
-      this.cursorEl.style.visibility = 'visible';
-      this.cursorEl.style.transform = `translate3d(${x - 18}px, ${y - 18}px, 0) scale(${scale})`;
-      if (isSnapped) {
-        this.cursorEl.style.borderColor = 'rgba(234, 179, 8, 0.95)';
-        this.cursorEl.style.boxShadow = '0 0 20px rgba(234, 179, 8, 0.6)';
-      } else {
-        this.cursorEl.style.borderColor = 'rgba(56, 189, 248, 0.8)';
-        this.cursorEl.style.boxShadow = '0 0 16px rgba(56, 189, 248, 0.4)';
+  private applyRestAppearance(isSnapped: boolean): void {
+    if (!this.cursorEl) return;
+
+    if (isSnapped) {
+      this.cursorEl.style.border = '3px solid #0A0A0A';
+      this.cursorEl.style.background = 'rgba(0, 82, 255, 0.22)';
+      if (this.dotEl) {
+        this.dotEl.style.background = '#0A0A0A';
+      }
+    } else {
+      this.cursorEl.style.border = '2.5px solid #0052FF';
+      this.cursorEl.style.background = 'rgba(0, 82, 255, 0.12)';
+      if (this.dotEl) {
+        this.dotEl.style.background = '#0052FF';
       }
     }
   }
 
-  flashClickEffect(): void {
-    if (this.cursorEl) {
-      this.cursorEl.style.background =
-        'radial-gradient(circle, rgba(74, 222, 128, 0.85) 0%, rgba(74, 222, 128, 0.3) 70%, transparent 100%)';
-      setTimeout(() => {
-        if (this.cursorEl) {
-          this.cursorEl.style.background =
-            'radial-gradient(circle, rgba(56, 189, 248, 0.55) 0%, rgba(56, 189, 248, 0.15) 60%, transparent 100%)';
-        }
-      }, 140);
+  moveTo(x: number, y: number, isSnapped = false): void {
+    if (!this.cursorEl) return;
+
+    this.lastSnapped = isSnapped;
+    const scale = isSnapped ? 1.18 : 1.0;
+
+    this.cursorEl.style.opacity = '1';
+    this.cursorEl.style.visibility = 'visible';
+    this.cursorEl.style.transform = `translate3d(${x - 20}px, ${y - 20}px, 0) scale(${scale})`;
+
+    if (!this.isFlashing) {
+      this.applyRestAppearance(isSnapped);
     }
+  }
+
+  flashClickEffect(): void {
+    if (!this.cursorEl) return;
+
+    if (this.flashTimer !== null) {
+      clearTimeout(this.flashTimer);
+    }
+
+    this.isFlashing = true;
+    this.cursorEl.style.background = 'rgba(21, 128, 61, 0.28)';
+    this.cursorEl.style.border = '3px solid #15803D';
+    if (this.dotEl) {
+      this.dotEl.style.background = '#15803D';
+    }
+
+    this.flashTimer = setTimeout(() => {
+      this.isFlashing = false;
+      this.flashTimer = null;
+      this.applyRestAppearance(this.lastSnapped);
+    }, 140);
   }
 
   hide(): void {
@@ -72,9 +118,16 @@ export class WebCursorController {
   }
 
   destroy(): void {
+    if (this.flashTimer !== null) {
+      clearTimeout(this.flashTimer);
+      this.flashTimer = null;
+    }
+    this.isFlashing = false;
+
     if (this.cursorEl && this.cursorEl.parentNode) {
       this.cursorEl.parentNode.removeChild(this.cursorEl);
       this.cursorEl = null;
+      this.dotEl = null;
     }
   }
 }

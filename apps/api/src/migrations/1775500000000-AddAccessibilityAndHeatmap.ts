@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAccessibilityAndHeatmap1775500000000
-  implements MigrationInterface
-{
+export class AddAccessibilityAndHeatmap1775500000000 implements MigrationInterface {
   name = 'AddAccessibilityAndHeatmap1775500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

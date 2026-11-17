@@ -2,8 +2,10 @@
 
 import { use, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Volume2, VolumeX, Eye, AlertTriangle, Clock, Sparkles } from 'lucide-react';
+import { Volume2, VolumeX, Eye, AlertTriangle, Clock, Compass } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { Skeleton } from '@/components/ui/skeleton';
 import { MCQBoard } from '@/components/mcq/MCQBoard';
 import { useGaze } from '@/components/gaze/GazeProvider';
 import { decodeBinaryPayloadToArrayBuffer } from '@/lib/gaze/server-weights';
@@ -85,7 +87,7 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   // Camera tracking integration
   const rawGaze = useGaze();
   const gaze = rawGaze as unknown as ExtendedGazeContext;
-  const { startPipeline, stopPipeline, setModel, stats } = gaze;
+  const { startPipeline, stopPipeline, setModel, setAccessibilityProfile, stats } = gaze;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -96,7 +98,7 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
       try {
         const res = await api.get<AccessibilityProfile>('/users/me/accessibility');
         if (res.data) {
-          gaze.setAccessibilityProfile?.(res.data);
+          setAccessibilityProfile?.(res.data);
           if (typeof res.data.ttsEnabled === 'boolean') {
             setTtsEnabled(res.data.ttsEnabled);
             ttsEnabledRef.current = res.data.ttsEnabled;
@@ -107,7 +109,7 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
       }
     }
     loadAccessibility();
-  }, [gaze]);
+  }, [setAccessibilityProfile]);
 
   // Load Model from server
   const loadModelFromServer = useCallback(async () => {
@@ -191,6 +193,7 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         }
       } catch (error) {
         console.error(error);
+        toast.error('Không thể tải phiên làm bài');
         router.push('/user/dashboard');
       } finally {
         setLoading(false);
@@ -215,10 +218,12 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         gazeHeatmap: telemetryPointsRef.current,
         faceLossPauseCount: faceLossCountRef.current,
       });
+      toast.success('Đã nộp bài thi thành công');
       stopPipeline();
       router.push('/user/dashboard');
     } catch (error) {
       console.error(error);
+      toast.error('Không thể nộp bài thi. Vui lòng thử lại.');
       finishingRef.current = false;
     }
   }, [router, sessionId, stopPipeline]);
@@ -369,7 +374,12 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
       answerQueueRef.current = answerQueueRef.current
         .catch(() => undefined)
         .then(async () => {
-          await api.post(`/exams/sessions/${sessionId}/answer`, payload);
+          try {
+            await api.post(`/exams/sessions/${sessionId}/answer`, payload);
+          } catch (error) {
+            toast.error('Lỗi mạng khi lưu câu trả lời. Vui lòng kiểm tra kết nối.');
+            throw error;
+          }
         });
 
       return answerQueueRef.current;
@@ -435,6 +445,8 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         } catch (error) {
           console.error(error);
         }
+      } else {
+        void answerPersistPromise.catch(() => undefined);
       }
     },
     [session, currentIndex, enqueueAnswerSubmission, handleFinish],
@@ -455,23 +467,105 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const minsText = mins < 10 ? `0${mins}` : `${mins}`;
+    const secsText = secs < 10 ? `0${secs}` : `${secs}`;
+    return `${minsText}:${secsText}`;
   };
 
   const renderContent = () => {
     if (loading || !session) {
       return (
-        <div className="h-full w-full flex flex-col items-center justify-center bg-[#080B11] text-slate-100">
-          <div className="h-12 w-12 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
-          <p className="mt-5 text-lg font-semibold tracking-wider text-slate-300">
-            Đang chuẩn bị phòng thi trợ năng...
-          </p>
+        <div
+          aria-busy="true"
+          aria-label="Đang chuẩn bị phòng thi trợ năng"
+          className="h-full w-full flex flex-col bg-[#F5F5F7]"
+        >
+          {/* Top HUD Skeleton */}
+          <header className="shrink-0 flex items-center justify-between px-4 md:px-6 py-3 bg-white/80 backdrop-blur-2xl backdrop-saturate-180 border-b border-black/[0.08]">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-7 w-24 rounded-xl" />
+              <Skeleton className="hidden md:block h-5 w-48" />
+            </div>
+            <div className="hidden lg:flex items-center gap-2.5">
+              <Skeleton className="h-7 w-32 rounded-full" />
+              <Skeleton className="h-7 w-28 rounded-full" />
+              <Skeleton className="h-7 w-20 rounded-full" />
+            </div>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-8 w-28 rounded-xl" />
+              <Skeleton className="h-8 w-20 rounded-xl" />
+            </div>
+          </header>
+
+          {/* Progress Track Skeleton */}
+          <div className="shrink-0 flex w-full gap-1.5 px-4 md:px-6 py-2 bg-[#F5F5F7]/90 border-b border-black/[0.06]">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <Skeleton key={idx} className="h-1.5 flex-1 rounded-full" />
+            ))}
+          </div>
+
+          {/* Exam Room Grid Skeleton */}
+          <main className="flex-1 min-h-0 p-4 md:p-6 grid grid-cols-2 md:grid-cols-12 md:grid-rows-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-4 md:gap-8">
+            <div className="order-1 md:order-none col-span-1 md:col-span-5 min-h-[128px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 p-5 md:p-6 flex flex-col justify-between shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-12 w-12 rounded-[14px]" />
+              <div className="space-y-2.5">
+                <Skeleton className="h-5 w-4/5" />
+                <Skeleton className="h-5 w-3/5" />
+              </div>
+            </div>
+
+            <div className="hidden md:block md:col-span-2" aria-hidden="true" />
+
+            <div className="order-2 md:order-none col-span-1 md:col-span-5 min-h-[128px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 p-5 md:p-6 flex flex-col justify-between shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-12 w-12 rounded-[14px]" />
+              <div className="space-y-2.5">
+                <Skeleton className="h-5 w-4/5" />
+                <Skeleton className="h-5 w-2/3" />
+              </div>
+            </div>
+
+            <div className="order-4 md:order-none col-span-1 md:col-span-2 min-h-[76px] md:min-h-[108px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 p-4 flex flex-col items-center justify-center gap-2 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-6 w-6 rounded-full" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+
+            <div className="order-3 md:order-none col-span-2 md:col-span-8 min-h-[112px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 px-6 py-6 flex flex-col items-center justify-center gap-3 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-7 w-3/4" />
+              <Skeleton className="h-7 w-1/2" />
+            </div>
+
+            <div className="order-5 md:order-none col-span-1 md:col-span-2 min-h-[76px] md:min-h-[108px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 p-4 flex flex-col items-center justify-center gap-2 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-6 w-6 rounded-full" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+
+            <div className="order-6 md:order-none col-span-1 md:col-span-5 min-h-[128px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 p-5 md:p-6 flex flex-col justify-between shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-12 w-12 rounded-[14px]" />
+              <div className="space-y-2.5">
+                <Skeleton className="h-5 w-4/5" />
+                <Skeleton className="h-5 w-1/2" />
+              </div>
+            </div>
+
+            <div className="order-8 md:order-none col-span-2 md:col-span-2 min-h-[76px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 p-4 flex flex-row md:flex-col items-center justify-center gap-2 shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-11 w-11 rounded-full" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+
+            <div className="order-7 md:order-none col-span-1 md:col-span-5 min-h-[128px] rounded-[22px] border-[1.5px] border-black/[0.08] bg-white/95 p-5 md:p-6 flex flex-col justify-between shadow-[0_2px_12px_-2px_rgba(0,0,0,0.05)]">
+              <Skeleton className="h-12 w-12 rounded-[14px]" />
+              <div className="space-y-2.5">
+                <Skeleton className="h-5 w-4/5" />
+                <Skeleton className="h-5 w-3/5" />
+              </div>
+            </div>
+          </main>
         </div>
       );
     }
 
     if (questions.length === 0) {
-      return <div className="p-12 text-white text-2xl">Bài thi không có câu hỏi nào.</div>;
+      return <div className="p-12 text-[#1D1D1F] text-2xl font-semibold">Bài thi không có câu hỏi nào.</div>;
     }
 
     const currentQuestion = questions[currentIndex];
@@ -498,14 +592,14 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
 
     return (
       <>
-        {/* Top Ergonomic HUD Bar */}
-        <header className="shrink-0 z-50 flex items-center justify-between px-4 md:px-6 py-2.5 bg-[#0B0F17] border-b border-slate-800/80">
+        {/* Top Liquid Glass Ergonomic HUD Bar */}
+        <header className="shrink-0 z-50 flex items-center justify-between px-4 md:px-6 py-3 bg-white/80 backdrop-blur-2xl backdrop-saturate-180 border-b border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.03)] text-[#1D1D1F]">
           {/* Left: Exam title & Progress status */}
           <div className="flex items-center gap-3 min-w-0">
-            <span className="shrink-0 rounded-lg bg-slate-900 border border-slate-700/80 px-2.5 py-1 text-xs md:text-sm font-bold text-sky-300 tabular-nums">
-              CÂU {currentIndex + 1} / {questions.length}
+            <span className="shrink-0 rounded-xl bg-[#F2F2F7] border border-black/[0.08] px-3 py-1 text-xs md:text-sm font-bold text-[#1D1D1F] tabular-nums">
+              Câu {currentIndex + 1} / {questions.length}
             </span>
-            <span className="hidden md:inline text-sm font-medium text-slate-300 truncate max-w-xs">
+            <span className="hidden md:inline text-sm font-semibold text-[#3C3C43] truncate max-w-xs">
               {session?.exam?.title}
             </span>
           </div>
@@ -514,10 +608,10 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
           <div className="hidden lg:flex items-center gap-2.5">
             {/* Face Status Badge */}
             <div
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border transition-colors ${
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] ${
                 isSingleFaceReady
-                  ? 'border-emerald-500/30 bg-emerald-950/40 text-emerald-300'
-                  : 'border-rose-500/50 bg-rose-950/60 text-rose-300 animate-pulse'
+                  ? 'border-[#86EFAC] bg-[#ECFDF3] text-[#12783D]'
+                  : 'border-[#FFB8B5] bg-[#FFECEB] text-[#D70015]'
               }`}
             >
               <Eye className="w-3.5 h-3.5" />
@@ -526,19 +620,19 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
 
             {/* Head Pose Badge */}
             <div
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] ${
                 isHeadPoseOk
-                  ? 'border-sky-500/30 bg-sky-950/40 text-sky-300'
-                  : 'border-amber-500/40 bg-amber-950/50 text-amber-300'
+                  ? 'border-black/[0.08] bg-[#F2F2F7] text-[#1D1D1F]'
+                  : 'border-[#FCD34D] bg-[#FFF8EB] text-[#9A4600]'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Compass className="w-3.5 h-3.5" />
               <span>{isHeadPoseOk ? 'Tư thế chuẩn' : 'Đang nghiêng đầu'}</span>
             </div>
 
             {/* Lighting Badge */}
             {lightingScore !== undefined && (
-              <div className="rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-slate-400 tabular-nums">
+              <div className="rounded-full border border-black/[0.08] bg-[#F2F2F7] px-3 py-1 text-xs font-medium text-[#3C3C43] tabular-nums">
                 Sáng: {Math.round(lightingScore * 100)}%
               </div>
             )}
@@ -551,26 +645,32 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
               type="button"
               onClick={toggleTts}
               aria-label={ttsEnabled ? 'Tắt đọc đề' : 'Bật đọc đề'}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 ttsEnabled
-                  ? 'border-sky-500/50 bg-sky-950/50 text-sky-200'
-                  : 'border-slate-700/80 bg-slate-900 text-slate-400 hover:text-slate-200'
+                  ? 'border-[#0066CC] bg-[#E8F2FF] text-[#0066CC]'
+                  : 'border-black/[0.10] bg-white text-[#515154] hover:text-[#1D1D1F]'
               }`}
             >
-              {ttsEnabled ? <Volume2 className="w-4 h-4 text-sky-400" /> : <VolumeX className="w-4 h-4" />}
-              <span className="hidden sm:inline">{ttsEnabled ? 'Đọc đề: BẬT' : 'Đọc đề: TẮT'}</span>
+              {ttsEnabled ? (
+                <Volume2 className="w-4 h-4 text-[#0066CC]" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-[#515154]" />
+              )}
+              <span className="hidden sm:inline">{ttsEnabled ? 'Đọc đề: Bật' : 'Đọc đề: Tắt'}</span>
             </button>
 
             {/* Countdown Timer */}
             {remainingSeconds !== null && (
               <div
-                className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 font-mono text-sm font-bold tabular-nums ${
+                className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-bold tabular-nums ${
                   remainingSeconds < 300
-                    ? 'border-rose-500/70 bg-rose-950/60 text-rose-300 animate-pulse'
-                    : 'border-slate-700/80 bg-slate-900 text-slate-100'
+                    ? 'border-[#FFB8B5] bg-[#FFECEB] text-[#D70015]'
+                    : 'border-black/[0.08] bg-[#F2F2F7] text-[#1D1D1F]'
                 }`}
               >
-                <Clock className="w-4 h-4 text-slate-400" />
+                <Clock
+                  className={`w-4 h-4 ${remainingSeconds < 300 ? 'text-[#D70015]' : 'text-[#515154]'}`}
+                />
                 <span>{formatTimer(remainingSeconds)}</span>
               </div>
             )}
@@ -578,19 +678,19 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
         </header>
 
         {/* Top Progress Track */}
-        <div className="shrink-0 z-40 flex w-full justify-center gap-1.5 px-4 md:px-6 py-1.5 bg-[#080B11] border-b border-slate-800/50">
+        <div className="shrink-0 z-40 flex w-full justify-center gap-1.5 px-4 md:px-6 py-2 bg-[#F5F5F7] border-b border-black/[0.06]">
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           {questions.map((q: any, i: number) => {
             const isAnswered = answeredQuestionIds.has(q.id);
             const isCurrent = i === currentIndex;
-            let barStyle = 'bg-slate-800';
-            if (isCurrent) barStyle = 'bg-sky-400';
-            else if (isAnswered) barStyle = 'bg-emerald-500/80';
+            let barStyle = 'bg-black/[0.10]';
+            if (isCurrent) barStyle = 'bg-[#0066CC]';
+            else if (isAnswered) barStyle = 'bg-[#12783D]';
 
             return (
               <div
                 key={i}
-                className={`h-1 flex-1 rounded-full transition-colors duration-200 ${barStyle}`}
+                className={`h-1.5 flex-1 rounded-full transition-colors duration-200 ${barStyle}`}
               />
             );
           })}
@@ -598,16 +698,16 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
 
         {/* Auto-Pause Warning Banner on Face Loss */}
         {isPaused && (
-          <div className="absolute inset-x-6 top-20 z-50 rounded-2xl border border-rose-500/70 bg-[#180C12]/95 p-5 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="absolute inset-x-6 top-20 z-50 rounded-[22px] border border-[#FFB8B5] bg-[#FFECEB]/95 backdrop-blur-xl p-5 shadow-[0_12px_28px_-6px_rgba(215,0,21,0.16)]">
             <div className="flex items-center gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-600/90 text-white">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#D70015] text-white">
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-bold text-rose-100 uppercase tracking-wide">
+                <h3 className="text-base font-bold text-[#D70015]">
                   Đã tạm dừng tính giờ bài thi (Lần {faceLossPauseCount})
                 </h3>
-                <p className="text-sm font-medium text-rose-200/90">
+                <p className="text-sm font-medium text-[#991B1B]">
                   Không nhận diện được khuôn mặt của bạn liên tục quá 1.5 giây. Vui lòng ngồi thẳng vào vùng trung tâm camera để tiếp tục làm bài.
                 </p>
               </div>
@@ -632,7 +732,7 @@ export default function ExamSessionFocusMode({ params }: { params: Promise<{ ses
   };
 
   return (
-    <div className="fixed inset-0 z-[100] h-dvh w-screen overflow-hidden flex flex-col bg-[#080B11]">
+    <div className="fixed inset-0 z-[100] h-dvh w-screen overflow-hidden flex flex-col bg-[#F5F5F7]">
       {/* Hidden Video Feed for Gaze Tracking */}
       <video
         ref={videoRef}

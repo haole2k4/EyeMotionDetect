@@ -21,103 +21,105 @@ export function DebugOverlay() {
   if (!isVisible || !stats) return null;
 
   return (
-    <div className="fixed top-4 left-4 z-[99999] w-80 rounded-lg bg-black/85 p-4 font-mono text-xs text-green-400 shadow-xl pointer-events-none border border-neutral-800">
-      <h3 className="mb-2 border-b border-gray-700 pb-1 font-bold text-white flex justify-between items-center">
+    <div className="fixed top-4 left-4 z-[99999] w-80 rounded-xl border-2 border-[#0A0A0A] bg-white p-4 text-xs text-[#0A0A0A] pointer-events-none tabular-nums">
+      <h3 className="mb-2.5 border-b-2 border-[#E4E4E7] pb-2 font-bold text-[#0A0A0A] flex justify-between items-center">
         <span>Gaze Core 144Hz HUD</span>
-        <span className="text-[10px] text-cyan-400 uppercase">{stats.activeModel}</span>
+        <span className="rounded border border-[#D4D4D8] bg-[#F4F4F5] px-2 py-0.5 text-[11px] font-semibold text-[#0052FF]">
+          {stats.activeModel}
+        </span>
       </h3>
 
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <div className="flex justify-between">
-          <span>FPS (Render Loop):</span>
-          <span className={stats.fps >= 60 ? 'text-green-400 font-bold' : 'text-yellow-400'}>
+          <span className="text-[#52525B]">FPS (Render Loop):</span>
+          <span className={stats.fps >= 60 ? 'text-[#15803D] font-bold' : 'text-[#B45309] font-bold'}>
             {stats.fps} FPS
           </span>
         </div>
 
         <div className="flex justify-between">
-          <span>WASM / Inference:</span>
-          <span>{stats.inferenceMs.toFixed(1)} ms</span>
+          <span className="text-[#52525B]">WASM / Inference:</span>
+          <span className="font-semibold text-[#0A0A0A]">{stats.inferenceMs.toFixed(1)} ms</span>
         </div>
 
         <div className="flex justify-between">
-          <span>MediaPipe Loop:</span>
-          <span className={stats.mediapipeMs < 25 ? 'text-green-400' : 'text-yellow-400'}>
+          <span className="text-[#52525B]">MediaPipe Loop:</span>
+          <span className={stats.mediapipeMs < 25 ? 'text-[#15803D] font-semibold' : 'text-[#B45309] font-semibold'}>
             {stats.mediapipeMs.toFixed(1)} ms
           </span>
         </div>
 
-        <div className="mt-2 border-t border-gray-700 pt-2 flex justify-between">
-          <span>Smoothed Gaze:</span>
-          <span>
+        <div className="mt-2 border-t-2 border-[#E4E4E7] pt-2 flex justify-between">
+          <span className="text-[#52525B]">Smoothed Gaze:</span>
+          <span className="font-semibold text-[#0A0A0A]">
             {stats.smoothedGaze[0].toFixed(0)}, {stats.smoothedGaze[1].toFixed(0)}
           </span>
         </div>
 
         {stats.activeTargetKey && (
-          <div className="flex justify-between text-yellow-300">
+          <div className="flex justify-between text-[#0052FF]">
             <span>Magnetic Snap:</span>
             <span className="font-bold">{stats.activeTargetKey}</span>
           </div>
         )}
 
-        <div className="mt-2 border-t border-gray-700 pt-2">
+        <div className="mt-2 border-t-2 border-[#E4E4E7] pt-2">
           <div className="flex justify-between mb-1">
-            <span>EAR (L / R):</span>
-            <span className={stats.headPoseOk === false ? 'text-red-400' : 'text-neutral-400'}>
-              Pose: {stats.headPoseOk ? 'OK' : 'TILTED'}
+            <span className="text-[#52525B]">EAR (L / R):</span>
+            <span className={stats.headPoseOk === false ? 'text-[#DC2626] font-semibold' : 'text-[#3F3F46] font-medium'}>
+              Pose: {stats.headPoseOk ? 'OK' : 'Tilted'}
             </span>
           </div>
-          <div className="flex gap-2">
-            <span className={stats.earLeft < 0.2 ? 'text-yellow-400' : ''}>
+          <div className="flex gap-3 font-medium">
+            <span className={stats.earLeft < 0.2 ? 'text-[#B45309] font-semibold' : 'text-[#0A0A0A]'}>
               L: {stats.earLeft.toFixed(3)}
             </span>
-            <span className={stats.earRight < 0.2 ? 'text-yellow-400' : ''}>
+            <span className={stats.earRight < 0.2 ? 'text-[#B45309] font-semibold' : 'text-[#0A0A0A]'}>
               R: {stats.earRight.toFixed(3)}
             </span>
           </div>
         </div>
 
-        <div className="mt-2 border-t border-gray-700 pt-2 flex justify-between">
-          <span>Face Status:</span>
-          <span className={stats.singleFaceReady ? 'text-green-400' : 'text-red-400'}>
-            {stats.singleFaceReady ? '1 FACE (LOCKED)' : `${stats.faceCount} FACES`}
+        <div className="mt-2 border-t-2 border-[#E4E4E7] pt-2 flex justify-between">
+          <span className="text-[#52525B]">Face Status:</span>
+          <span className={stats.singleFaceReady ? 'text-[#15803D] font-semibold' : 'text-[#DC2626] font-semibold'}>
+            {stats.singleFaceReady ? '1 Face (Locked)' : `${stats.faceCount} Faces`}
           </span>
         </div>
 
-        <div className="mt-2 border-t border-gray-700 pt-2 flex justify-between font-bold">
-          <span>Action / Gesture:</span>
+        <div className="mt-2 border-t-2 border-[#E4E4E7] pt-2 flex justify-between items-center font-semibold">
+          <span className="text-[#52525B]">Action / Gesture:</span>
           <span
             className={
               stats.blinkState !== 'none'
-                ? 'rounded bg-emerald-600 px-1 text-white'
+                ? 'rounded bg-[#15803D] px-1.5 py-0.5 text-white'
                 : stats.saccadeEvent && stats.saccadeEvent !== 'none'
-                ? 'rounded bg-purple-600 px-1 text-white'
-                : 'text-gray-400'
+                ? 'rounded bg-[#0052FF] px-1.5 py-0.5 text-white'
+                : 'text-[#52525B]'
             }
           >
             {stats.blinkState !== 'none'
-              ? stats.blinkState.toUpperCase()
+              ? stats.blinkState
               : stats.saccadeEvent && stats.saccadeEvent !== 'none'
-              ? `SACCADE_${stats.saccadeEvent.toUpperCase()}`
-              : 'IDLE'}
+              ? `saccade_${stats.saccadeEvent}`
+              : 'Idle'}
           </span>
         </div>
 
-        <div className="flex justify-between text-neutral-300">
-          <span>Grid Region:</span>
-          <span className="text-cyan-300">{stats.currentRegion}</span>
+        <div className="flex justify-between text-[#3F3F46]">
+          <span className="text-[#52525B]">Grid Region:</span>
+          <span className="font-semibold text-[#0052FF]">{stats.currentRegion}</span>
         </div>
 
         {stats.dwellProgress > 0 && (
-          <div className="flex justify-between text-amber-300">
+          <div className="flex justify-between text-[#0052FF] font-semibold">
             <span>Dwell Progress:</span>
             <span>{(stats.dwellProgress * 100).toFixed(0)}%</span>
           </div>
         )}
 
-        <div className="mt-3 text-[10px] text-gray-500 italic">
-          Press Ctrl+Shift+D to toggle HUD
+        <div className="mt-3 text-[11px] text-[#52525B]">
+          Nhấn Ctrl+Shift+D để ẩn/hiện HUD
         </div>
       </div>
     </div>
